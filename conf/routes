@@ -1,0 +1,16 @@
+GET        /                                    controllers.HomeController.index
+GET        /verify                              controllers.HomeController.verify(hash: String)
+GET        /banana/:id                          controllers.HomeController.banana(id: Long)
+
+# Map static resources from the /public folder to the /assets URL path
+GET        /assets/*file                        controllers.Assets.versioned(path="/public", file: Asset)
+
+
+GET        /products                            inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
+GET        /products/$id<[0-9]+>                inventory.controllers.ProductController.get(id: Long, lang: Option[String], include: Option[String])
+GET        /products/$sku<[a-zA-Z0-9-]+>        inventory.controllers.ProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
+
+# Invoices
+GET        /invoices                            inventory.controllers.InvoiceController.search(include: Option[String])
+GET        /invoices/$id<[0-9]+>                inventory.controllers.InvoiceController.get(id: Long)
+

@@ -1,0 +1,5 @@
+package inventory
+
+class InventoryService {
+
+}
