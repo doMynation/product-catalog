@@ -123,7 +123,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
   }
 
   def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[Seq[Product]] = Future {
-    db.withConnection(conn => {
+    db.withConnection(implicit conn => {
       val wheres = new ListBuffer[String]()
       val havings = new ListBuffer[String]()
       val joins = new ListBuffer[String]()
@@ -201,34 +201,15 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, ${lim}").getOrElse("LIMIT 100")}
         """
 
-      val (translatedSql, paramsList) = DatabaseHelper.translate(sql, params)
-      val stmt = conn.prepareStatement(translatedSql)
-
-      var idx = 1
-      paramsList.foreach(param => {
-        stmt.setObject(idx, param)
-        idx = idx + 1
-      })
-
-      val rs = stmt.executeQuery
-      var products = Queue[Product]()
-
-      while (rs.next) {
-        products = products :+ handleInclusions(hydrateProduct(rs), lang, include)
-      }
-
-      products
+      val products = DatabaseHelper.fetchMany(sql, params)(hydrateProduct)
+      products.map(handleInclusions(_, lang, include))
     })
   }
 
-  private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild
-
-  =
+  private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
     ProductChild(product, rs.getString("type"), rs.getLong("quantity"), rs.getBoolean("is_visible"), rs.getBoolean("is_compiled"))
 
-  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute
-
-  = {
+  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
     val ts = rs.getTimestamp("attribute_modification_date")
     val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
 
