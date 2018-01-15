@@ -3,7 +3,7 @@ package inventory.repositories
 import java.sql.ResultSet
 import com.google.inject.{Inject, Singleton}
 import inventory.entities._
-import inventory.util.{QueryTranslator, SearchRequest}
+import inventory.util.{DatabaseHelper, SearchRequest}
 import play.api.db.Database
 import scala.collection.immutable.Queue
 import scala.collection.mutable.ListBuffer
@@ -26,105 +26,100 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     product.map(handleInclusions(_, lang, include))
   }
 
-  private def getProduct(id: Long, lang: String): Option[Product] = db.withConnection { conn =>
-    val stmt = conn.prepareStatement(
+  private def getProduct(id: Long, lang: String): Option[Product] = db.withConnection { implicit conn =>
+    val sql =
       s"""
-            SELECT p.*, p.retail_price AS price, c.*, t.*, t.label AS name
+            SELECT p.*, p.retail_price AS price, c.*, t.*, tc.*
             FROM inv_products p
             JOIN inv_product_categories c ON c.id = p.category_id
             JOIN translations t ON t.description_id = p.description_id
-            JOIN languages l ON l.id = t.lang_id AND l.code = ?
-            WHERE p.id = ?
-         """)
+            JOIN translations tc ON tc.description_id = c.description_id
+            JOIN languages l ON l.id = t.lang_id AND l.code = @lang
+            JOIN languages lc ON lc.id = tc.lang_id AND lc.code = @lang
+            WHERE p.id = @productId
+         """
 
-    stmt.setString(1, lang)
-    stmt.setLong(2, id)
-
-    val rs = stmt.executeQuery
-
-    if (rs.next) Some(hydrateProduct(rs))
-    else None
+    DatabaseHelper.fetchOne(sql, Map(
+      "productId" -> id.toString,
+      "lang" -> lang
+    ))(hydrateProduct)
   }
 
-  private def getProduct(sku: String, lang: String): Option[Product] = db.withConnection { conn =>
-    val stmt = conn.prepareStatement(
+  private def getProduct(sku: String, lang: String): Option[Product] = db.withConnection { implicit conn =>
+    val sql =
       s"""
-            SELECT p.*, p.retail_price AS price, c.*, t.*, t.label AS name
+            SELECT p.*, p.retail_price AS price, c.*, t.*, tc.*
             FROM inv_products p
             JOIN inv_product_categories c ON c.id = p.category_id
             JOIN translations t ON t.description_id = p.description_id
-            JOIN languages l ON l.id = t.lang_id AND l.code = ?
-            WHERE p.sku = ?
-         """)
+            JOIN translations tc ON tc.description_id = c.description_id
+            JOIN languages l ON l.id = t.lang_id AND l.code = @lang
+            JOIN languages lc ON lc.id = tc.lang_id AND lc.code = @lang
+            WHERE p.sku = @sku
+         """
 
-    stmt.setString(1, lang)
-    stmt.setString(2, sku)
-
-    val rs = stmt.executeQuery
-
-    if (rs.next) Some(hydrateProduct(rs))
-    else None
+    DatabaseHelper.fetchOne(sql, Map(
+      "sku" -> sku,
+      "lang" -> lang
+    ))(hydrateProduct)
   }
 
-  private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection(conn => {
+  private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection { implicit conn =>
     if (!store.id.isDefined) return None
 
-    val stmt = conn.prepareStatement(
+    val sql =
       s"""
-          SELECT p.*, c.*, t.*, t.label AS name, IFNULL(ps.price, p.retail_price) AS price
+          SELECT p.*, c.*, t.*, tc.*, IFNULL(ps.price, p.retail_price) AS price
           FROM inv_products p
           JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = ?
           JOIN inv_product_categories c ON c.id = p.category_id
           JOIN translations t ON t.description_id = p.description_id
+          JOIN translations tc ON tc.description_id = c.description_id
           JOIN languages l ON l.id = t.lang_id AND l.code = ?
+          JOIN languages lc ON lc.id = tc.lang_id AND lc.code = ?
           WHERE p.id = ?
-       """)
+       """
 
-    stmt.setLong(1, store.id.get)
-    stmt.setString(2, lang)
-    stmt.setLong(3, id)
+    DatabaseHelper.fetchOne(sql, Map(
+      "productId" -> id.toString,
+      "lang" -> lang,
+      "storeId" -> store.id.get.toString
+    ))(hydrateProduct)
+  }
 
-    val rs = stmt.executeQuery
-
-    if (rs.next) Some(hydrateProduct(rs))
-    else None
-  })
-
-  private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(conn => {
+  private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(implicit conn => {
     if (!store.id.isDefined) return None
 
-    val stmt = conn.prepareStatement(
+    val sql =
       s"""
-          SELECT p.*, c.*, t.*, t.label AS name, IFNULL(ps.price, p.retail_price) AS price
+          SELECT p.*, c.*, t.*, tc.*, IFNULL(ps.price, p.retail_price) AS price
           FROM inv_products p
-          JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = ?
+          JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId
           JOIN inv_product_categories c ON c.id = p.category_id
           JOIN translations t ON t.description_id = p.description_id
-          JOIN languages l ON l.id = t.lang_id AND l.code = ?
-          WHERE p.sku = ?
-       """)
+          JOIN translations tc ON tc.description_id = c.description_id
+          JOIN languages l ON l.id = t.lang_id AND l.code = @lang
+          JOIN languages lc ON lc.id = tc.lang_id AND lc.code = @lang
+          WHERE p.sku = @sku
+       """
 
-    stmt.setLong(1, store.id.get)
-    stmt.setString(2, lang)
-    stmt.setString(3, sku)
-
-    val rs = stmt.executeQuery
-
-    if (rs.next) Some(hydrateProduct(rs))
-    else None
+    DatabaseHelper.fetchOne(sql, Map(
+      "storeId" -> store.id.get.toString,
+      "lang" -> lang,
+      "sku" -> sku
+    ))(hydrateProduct)
   })
 
-  def getDescription(id: Long, lang: String): Description = db.withConnection { conn =>
-    val stmt = conn.prepareStatement(s" SELECT t.*, t.label AS name FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = ? WHERE description_id = ?")
-    stmt.setString(1, lang);
-    stmt.setLong(1, id);
-    val rs = stmt.executeQuery
+  def getDescription(id: Long, lang: String): Option[Description] = db.withConnection { implicit conn =>
+    val sql = " SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
 
-    Description(
-      rs.getString("name"),
-      rs.getString("short_description"),
-      rs.getString("long_description")
-    )
+    DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString)) { rs =>
+      Description(
+        rs.getString("label"),
+        rs.getString("short_description"),
+        rs.getString("long_description")
+      )
+    }
   }
 
   def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[Seq[Product]] = Future {
@@ -149,20 +144,19 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
 
       // `name` filter
       sr.filters.get("name").map(value => {
-        havings += "name LIKE @name"
+        wheres += "t.label LIKE @name"
         params = params + ("name" -> s"%${value}%")
-      })
-
-      // `nameSku` filter
-      sr.filters.get("nameSku").map(value => {
-        havings += "(name LIKE @name OR sku LIKE @sku)"
-        params = params + ("name" -> s"%${value}%", "sku" -> s"%${value}%")
       })
 
       // `label` filter (alias for `name`)
       sr.filters.get("label").map(value => {
-        havings += "name LIKE @name"
+        wheres += "t.label LIKE @name"
         params = params + ("name" -> s"%${value}%")
+      })
+
+      sr.filters.get("nameSku").map(value => {
+        wheres += "(t.label LIKE @name OR sku LIKE @sku)"
+        params = params + ("name" -> s"%${value}%", "sku" -> s"%${value}%")
       })
 
       // `category` filter (e.g. "model", "model,option")
@@ -192,11 +186,8 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
                 p.*,
                 ${priceColumn} AS price,
                 c.*,
-                tc.label AS category_name,
-                tc.short_description AS category_short_description,
-                tc.long_description AS category_long_description,
                 t.*,
-                t.label AS name
+                tc.*
               FROM inv_products p
               JOIN inv_product_categories c ON c.id = p.category_id
               JOIN translations t ON t.description_id = p.description_id
@@ -210,7 +201,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, ${lim}").getOrElse("LIMIT 100")}
         """
 
-      val (translatedSql, paramsList) = QueryTranslator.translate(sql, params)
+      val (translatedSql, paramsList) = DatabaseHelper.translate(sql, params)
       val stmt = conn.prepareStatement(translatedSql)
 
       var idx = 1
@@ -230,10 +221,14 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     })
   }
 
-  private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
+  private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild
+
+  =
     ProductChild(product, rs.getString("type"), rs.getLong("quantity"), rs.getBoolean("is_visible"), rs.getBoolean("is_compiled"))
 
-  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
+  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute
+
+  = {
     val ts = rs.getTimestamp("attribute_modification_date")
     val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
 
@@ -263,10 +258,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     Product(
       Some(rs.getLong("id")),
       rs.getString("sku"),
-      Description(rs.getString("name"), rs.getString("short_description"), rs.getString("long_description")),
+      Description(rs.getString("label"), rs.getString("short_description"), rs.getString("long_description")),
       rs.getDouble("price"),
       rs.getDouble("cost_price"),
       tags = tags,
+      category = Some(hydrateProductCategory(rs)),
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
       updatedAt = updatedAt
     )
@@ -277,11 +273,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
 
     ProductCategory(
-      Some(rs.getLong("category_id")),
+      Some(rs.getLong("c.id")),
       Description(
-        rs.getString("category_name"),
-        rs.getString("category_short_description"),
-        rs.getString("category_long_description")
+        rs.getString("tc.label"),
+        rs.getString("tc.short_description"),
+        rs.getString("tc.long_description")
       ),
       createdAt = rs.getTimestamp("c.creation_date").toLocalDateTime,
       updatedAt = updatedAt
