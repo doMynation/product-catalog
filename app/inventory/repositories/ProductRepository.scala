@@ -265,8 +265,8 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     )
   }
 
-  private def getProductAttributes(productId: Long, lang: String): Seq[ProductAttribute] = db.withConnection { conn =>
-    val stmt = conn.prepareStatement(
+  private def getProductAttributes(productId: Long, lang: String): Seq[ProductAttribute] = db.withConnection { implicit conn =>
+    val sql =
       s"""
          SELECT
          a.id AS attribute_id, a.code AS attribute_code, a.creation_date AS attribute_creation_date, a.modification_date AS attribute_modification_date,
@@ -275,37 +275,26 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
          FROM inv_product_attributes AS pa
          JOIN inv_attributes a ON a.id = pa.attribute_id
          JOIN translations t ON t.description_id = a.description_id
-         JOIN languages l ON l.id = t.lang_id AND l.code = ?
-         WHERE pa.product_id = ?
+         JOIN languages l ON l.id = t.lang_id AND l.code = @lang
+         WHERE pa.product_id = @productId
        """
-    )
-    stmt.setString(1, lang)
-    stmt.setLong(2, productId)
 
-    val rs = stmt.executeQuery
-    var attributes: Vector[ProductAttribute] = Vector()
-
-    while (rs.next) {
-      attributes = attributes :+ hydrateProductAttribute(rs)
-    }
-
-    attributes
+    DatabaseHelper.fetchMany(sql, Map(
+      "lang" -> lang,
+      "productId" -> productId.toString
+    ))(hydrateProductAttribute)
   }
 
-  private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { conn =>
-    val stmt = conn.prepareStatement("select sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions where product_id = ?")
-    stmt.setLong(1, productId)
+  private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { implicit conn =>
+    val sql = "SELECT sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
 
-    val rs = stmt.executeQuery
-    var children: Vector[ProductChild] = Vector()
+    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      val childProductId = rs.getLong("sub_product_id")
 
-    while (rs.next) {
-      get(rs.getLong("sub_product_id"), lang).map(product => {
-        children = children :+ hydrateProductChild(product, rs)
-      })
+      get(childProductId, lang)
+        .map(product => hydrateProductChild(product, rs))
+        .getOrElse(throw new RuntimeException(s"${childProductId} does not exist"))
     }
-
-    children
   }
 
   private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {
