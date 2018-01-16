@@ -34,6 +34,7 @@ case class Product(
                     tags: Seq[String] = List(),
                     attributes: Seq[ProductAttribute] = List(),
                     children: Seq[ProductChild] = List(),
+                    rules: Seq[ProductRule] = List(),
                     createdAt: LocalDateTime = LocalDateTime.now,
                     updatedAt: Option[LocalDateTime] = None,
                     category: Option[ProductCategory] = None

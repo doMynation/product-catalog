@@ -297,13 +297,33 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     }(conn)
   }
 
+  private def getProductRules(productId: Long, lang: String): Seq[ProductRule] = db.withConnection { conn =>
+    val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
+
+    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      val ruleProductId = rs.getLong("related_product_id")
+      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"${ruleProductId} does not exist"))
+    }(conn)
+  }
+
   private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {
     include.foldLeft(product) { (p, include) =>
       include match {
         case ProductInclusions.ATTRIBUTES => p.copy(attributes = getProductAttributes(product.id.get, lang))
         case ProductInclusions.CHILDREN => p.copy(children = getProductChildren(product.id.get, lang))
+        case ProductInclusions.RULES => p.copy(rules = getProductRules(product.id.get, lang))
         case _ => p
       }
     }
+  }
+
+  private def hydrateProductRule(product: Product, rs: ResultSet): ProductRule = {
+    ProductRule(
+      product = product,
+      newPrice = rs.getDouble("price"),
+      ruleType = rs.getString("type"),
+      quantity = rs.getInt("quantity"),
+      maxAllowedQuantity = rs.getInt("max_quantity")
+    )
   }
 }
