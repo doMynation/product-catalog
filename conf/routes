@@ -10,3 +10,5 @@ GET        /products/$sku<[a-zA-Z0-9-]+>        inventory.controllers.ProductCon
 GET        /invoices                            inventory.controllers.InvoiceController.search(include: Option[String])
 GET        /invoices/$id<[0-9]+>                inventory.controllers.InvoiceController.get(id: Long)
 
+GET        /test/:ld                            inventory.controllers.ProductController.test(ld: Int)
+

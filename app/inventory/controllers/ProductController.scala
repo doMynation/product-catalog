@@ -4,13 +4,20 @@ import javax.inject._
 import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
 import inventory.requestAttributes.Attrs
-import inventory.util.SearchRequest
+import inventory.util.{DatabaseHelper, SearchRequest}
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
 import scala.concurrent.ExecutionContext
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def test(l: Int) = Action {
+    val sku = DatabaseHelper.fetchColumn[String](s"SELECT sku FROM inv_products LIMIT ${l}, 1", Map()) _
+    val s = db.withConnection(conn => sku(conn))
+
+    s.fold(NotFound("banana"))(s => Ok(s"sku is: ${s}"))
+  }
 
   def get(id: Long, lang: Option[String], include: Option[String]) = authAction { req =>
     implicit val store = req.attrs.get(Attrs.Store)

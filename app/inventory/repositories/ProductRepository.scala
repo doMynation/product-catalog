@@ -15,18 +15,18 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
   type Product = inventory.entities.Product
 
   def get(id: Long, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
-    val product = store.map(s => getProductByStore(id, lang, s)) getOrElse getProduct(id, lang)
+    val product = store.map(getProductByStore(id, lang, _)) getOrElse getProduct(id, lang)
 
     product.map(handleInclusions(_, lang, include))
   }
 
   def getBySku(sku: String, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
-    val product = store.map(s => getProductByStore(sku, lang, s)) getOrElse getProduct(sku, lang)
+    val product = store.map(getProductByStore(sku, lang, _)) getOrElse getProduct(sku, lang)
 
     product.map(handleInclusions(_, lang, include))
   }
 
-  private def getProduct(id: Long, lang: String): Option[Product] = db.withConnection { implicit conn =>
+  private def getProduct(id: Long, lang: String): Option[Product] = db.withConnection { conn =>
     val sql =
       s"""
             SELECT p.*, p.retail_price AS price, c.*, t.*, tc.*
@@ -42,10 +42,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     DatabaseHelper.fetchOne(sql, Map(
       "productId" -> id.toString,
       "lang" -> lang
-    ))(hydrateProduct)
+    ))(hydrateProduct)(conn)
   }
 
-  private def getProduct(sku: String, lang: String): Option[Product] = db.withConnection { implicit conn =>
+  private def getProduct(sku: String, lang: String): Option[Product] = db.withConnection { conn =>
     val sql =
       s"""
             SELECT p.*, p.retail_price AS price, c.*, t.*, tc.*
@@ -61,10 +61,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     DatabaseHelper.fetchOne(sql, Map(
       "sku" -> sku,
       "lang" -> lang
-    ))(hydrateProduct)
+    ))(hydrateProduct)(conn)
   }
 
-  private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection { implicit conn =>
+  private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection { conn =>
     if (!store.id.isDefined) return None
 
     val sql =
@@ -84,10 +84,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       "productId" -> id.toString,
       "lang" -> lang,
       "storeId" -> store.id.get.toString
-    ))(hydrateProduct)
+    ))(hydrateProduct)(conn)
   }
 
-  private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(implicit conn => {
+  private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(conn => {
     if (!store.id.isDefined) return None
 
     val sql =
@@ -107,10 +107,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       "storeId" -> store.id.get.toString,
       "lang" -> lang,
       "sku" -> sku
-    ))(hydrateProduct)
+    ))(hydrateProduct)(conn)
   })
 
-  def getDescription(id: Long, lang: String): Option[Description] = db.withConnection { implicit conn =>
+  def getDescription(id: Long, lang: String): Option[Description] = db.withConnection { conn =>
     val sql = " SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
 
     DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString)) { rs =>
@@ -119,11 +119,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
         rs.getString("short_description"),
         rs.getString("long_description")
       )
-    }
+    }(conn)
   }
 
   def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[Seq[Product]] = Future {
-    db.withConnection(implicit conn => {
+    db.withConnection(conn => {
       val wheres = new ListBuffer[String]()
       val havings = new ListBuffer[String]()
       val joins = new ListBuffer[String]()
@@ -201,7 +201,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, ${lim}").getOrElse("LIMIT 100")}
         """
 
-      val products = DatabaseHelper.fetchMany(sql, params)(hydrateProduct)
+      val products = DatabaseHelper.fetchMany(sql, params)(hydrateProduct)(conn)
       products.map(handleInclusions(_, lang, include))
     })
   }
@@ -265,7 +265,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     )
   }
 
-  private def getProductAttributes(productId: Long, lang: String): Seq[ProductAttribute] = db.withConnection { implicit conn =>
+  private def getProductAttributes(productId: Long, lang: String): Seq[ProductAttribute] = db.withConnection { conn =>
     val sql =
       s"""
          SELECT
@@ -282,10 +282,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     DatabaseHelper.fetchMany(sql, Map(
       "lang" -> lang,
       "productId" -> productId.toString
-    ))(hydrateProductAttribute)
+    ))(hydrateProductAttribute)(conn)
   }
 
-  private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { implicit conn =>
+  private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { conn =>
     val sql = "SELECT sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
 
     DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
@@ -294,7 +294,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       get(childProductId, lang)
         .map(product => hydrateProductChild(product, rs))
         .getOrElse(throw new RuntimeException(s"${childProductId} does not exist"))
-    }
+    }(conn)
   }
 
   private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {
