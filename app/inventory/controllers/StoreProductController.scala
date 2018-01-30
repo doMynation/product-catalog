@@ -12,7 +12,7 @@ import play.api.mvc._
 
 import scala.concurrent.ExecutionContext
 
-class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction { req =>
     val values = productRepository.getAttributeValues(attributeId, lang.getOrElse("en"))
@@ -21,6 +21,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
   }
 
   def get(id: Long, lang: Option[String], include: Option[String]) = authAction { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
@@ -32,6 +33,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
   }
 
   def getBySku(sku: String, lang: Option[String], include: Option[String]) = authAction { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
@@ -50,6 +52,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
   }
 
   def search(lang: Option[String], include: Option[String]) = authAction.async { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
     val sr = SearchRequest.fromQueryString(req.queryString)
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")

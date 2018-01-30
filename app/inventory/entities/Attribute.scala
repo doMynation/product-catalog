@@ -11,6 +11,9 @@ object Attribute {
 
 case class Attribute(
                       id: Long,
+                      code: String,
+                      dataType: String,
+                      inputType: String,
                       description: Description,
                       createdAt: LocalDateTime = LocalDateTime.now,
                       updatedAt: Option[LocalDateTime] = None

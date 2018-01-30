@@ -31,7 +31,9 @@ class AuthenticatedAction @Inject()(parser: BodyParsers.Default, db: Database, s
 
   private def checkApiKey(apiKey: String, remoteAddress: String): Option[Store] = {
     // First check against the cache
-    if (cachedKeys.contains((apiKey, remoteAddress))) return cachedKeys.get((apiKey, remoteAddress)).get
+    if (cachedKeys.contains((apiKey, remoteAddress))) {
+      return cachedKeys((apiKey, remoteAddress))
+    }
 
     // Check if a store corresponds to the given api key and remote address
     val storeOpt = storeRepo.getByApiKey(apiKey, remoteAddress)

@@ -10,8 +10,10 @@ case class ProductAttribute(
                              id: Option[Long],
                              attribute: Attribute,
                              value: String,
-                             isEditable: Boolean = true,
-                             isReference: Boolean = false
+                             valueId: Option[Long] = None,
+                             valueSku: Option[String] = None,
+                             isEditable: Boolean,
+                             isReference: Boolean
                            ) {
 
 }

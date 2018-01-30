@@ -73,7 +73,7 @@ object DatabaseHelper {
 
       params.get(paramKey).map(paramValue => {
         orderedParams = orderedParams :+ paramValue
-      }).getOrElse(throw new RuntimeException(s"Parameter `${paramKey}` not defined"))
+      }).getOrElse(throw new RuntimeException(s"Parameter `$paramKey` not defined"))
     }
 
     val translatedSql = regex.replaceAllIn(sql, "?$3")
@@ -103,5 +103,18 @@ object DatabaseHelper {
     })
 
     stmt.executeQuery
+  }
+
+  /**
+    * Attempts to extract a value from a `ResultSet`.
+    * If the value doesn't exist, `None` is returned. Otherwise, `Some(value)` is returned.
+    *
+    * @param columnName The column name
+    * @param rs         The `ResultSet`
+    * @tparam T The type of the underlying value
+    * @return an Option[T]
+    */
+  def getNullable[T: NullableResultSetExtractor](columnName: String, rs: ResultSet): Option[T] = {
+    implicitly[NullableResultSetExtractor[T]].getOpt(columnName, rs)
   }
 }
