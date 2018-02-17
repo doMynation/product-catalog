@@ -412,11 +412,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
   }
 
   private def hydrateProduct(rs: ResultSet): Product = {
-    val ts = rs.getTimestamp("modification_date")
-    val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
-
-    val tagsValue = rs.getString("tags")
-    val tags: Seq[String] = if (rs.wasNull()) Seq() else tagsValue.split(",")
+    val metadata = Map(
+      "mpn" -> rs.getString("mpn"),
+      "isKit" -> rs.getInt("is_kit").toString,
+      "imageUrl" -> rs.getString("image_url")
+    )
 
     Product(
       Some(rs.getLong("id")),
@@ -424,11 +424,12 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       Description(rs.getString("p.name"), rs.getString("p.short_description"), rs.getString("p.long_description")),
       rs.getDouble("price"),
       rs.getDouble("cost_price"),
-      tags = tags,
+      tags = DatabaseHelper.getNullable[String]("tags", rs).fold(Seq[String]())(_.split(",")),
       category = Some(hydrateProductCategory(rs)),
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = updatedAt,
-      isCustom = rs.getBoolean("is_custom")
+      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      isCustom = rs.getBoolean("is_custom"),
+      metadata = metadata
     )
   }
 

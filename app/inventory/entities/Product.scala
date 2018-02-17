@@ -38,6 +38,7 @@ case class Product(
                     createdAt: LocalDateTime = LocalDateTime.now,
                     updatedAt: Option[LocalDateTime] = None,
                     category: Option[ProductCategory] = None,
-                    isCustom: Boolean
+                    isCustom: Boolean,
+                    metadata: Map[String, String] = Map()
                   ) extends TimestampEntity {
 }
