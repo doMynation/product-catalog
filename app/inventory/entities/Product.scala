@@ -37,6 +37,7 @@ case class Product(
                     rules: Seq[ProductRule] = List(),
                     createdAt: LocalDateTime = LocalDateTime.now,
                     updatedAt: Option[LocalDateTime] = None,
-                    category: Option[ProductCategory] = None
+                    category: Option[ProductCategory] = None,
+                    isCustom: Boolean
                   ) extends TimestampEntity {
 }

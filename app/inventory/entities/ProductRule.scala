@@ -7,6 +7,7 @@ object ProductRule {
 }
 
 case class ProductRule(
+                        id: Long,
                         product: Product,
                         newPrice: Double,
                         ruleType: String,

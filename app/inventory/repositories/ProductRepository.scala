@@ -6,6 +6,7 @@ import java.time.LocalDateTime
 import com.google.inject.{Inject, Singleton}
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest}
+import play.api.Logger
 import play.api.db.Database
 
 import scala.collection.immutable.Queue
@@ -57,12 +58,55 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
     ))(hydrateAttributeValue)(conn)
   }
 
-  def getProductRules(productId: Long, lang: String): Seq[ProductRule] = db.withConnection { conn =>
+  def getProductRules(productId: Long, lang: String)(implicit store: Option[Store] = None): Seq[ProductRule] = {
+    store map (getProductRulesByStore(productId, lang, _)) getOrElse getRules(productId, lang)
+  }
+
+  private def getRules(productId: Long, lang: String): Seq[ProductRule] = db.withConnection { conn =>
     val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
 
     DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
       val ruleProductId = rs.getLong("related_product_id")
       get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"$ruleProductId does not exist"))
+    }(conn)
+  }
+
+  def getRule(id: Long, lang: String)(implicit store: Option[Store] = None): Option[ProductRule] = {
+    store.map(getProductRuleByStore(id, lang, _)) getOrElse getProductRule(id, lang)
+  }
+
+  private def getProductRule(id: Long, lang: String): Option[ProductRule] = db.withConnection { conn =>
+    val sql = "SELECT * FROM inv_product_relations pr WHERE pr.id = @ruleId"
+
+    DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString)) { rs =>
+      val ruleProductId = rs.getLong("related_product_id")
+      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product ${ruleProductId} not found"))
+    }(conn)
+  }
+
+  private def getProductRuleByStore(id: Long, lang: String, store: Store) = db.withConnection { conn =>
+    val sql = "SELECT * FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.id = @ruleId"
+    val params = Map(
+      "storeId" -> store.id.get.toString,
+      "ruleId" -> id.toString,
+    )
+
+    DatabaseHelper.fetchOne(sql, params) { rs =>
+      val ruleProductId = rs.getLong("related_product_id")
+      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product ${ruleProductId} not found"))
+    }(conn)
+  }
+
+  private def getProductRulesByStore(productId: Long, lang: String, store: Store): Seq[ProductRule] = db.withConnection { conn =>
+    val sql = "SELECT pr.* FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.product_id = @productId"
+    val params = Map(
+      "storeId" -> store.id.get.toString,
+      "productId" -> productId.toString,
+    )
+
+    DatabaseHelper.fetchMany(sql, params) { rs =>
+      val ruleProductId = rs.getLong("related_product_id")
+      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"$ruleProductId does not exist"))
     }(conn)
   }
 
@@ -253,8 +297,15 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
         })
       })
 
-      val allowedSortFields = Set("sku", "name", "short_description", "long_description")
-      val sortField = sr.sortField.filter(allowedSortFields).getOrElse("sku")
+      val allowedSortFields = Map(
+        "sku" -> "sku",
+        "name" -> "`p.name`",
+        "shortDescription" -> "`p.short_description`",
+        "longDescription" -> "p.long_description`",
+      )
+
+      val sortField = sr.sortField.flatMap(allowedSortFields.get(_)).getOrElse("sku")
+      Logger.info(s"Sorting by [$sortField]")
 
       val sql =
         s"""
@@ -376,7 +427,8 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       tags = tags,
       category = Some(hydrateProductCategory(rs)),
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = updatedAt
+      updatedAt = updatedAt,
+      isCustom = rs.getBoolean("is_custom")
     )
   }
 
@@ -421,6 +473,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
 
   private def hydrateProductRule(product: Product, rs: ResultSet): ProductRule = {
     ProductRule(
+      id = rs.getLong("id"),
       product = product,
       newPrice = rs.getDouble("price"),
       ruleType = rs.getString("type"),

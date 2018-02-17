@@ -44,7 +44,19 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     }
   }
 
+  def getRule(id: Long, lang: Option[String]) = authAction { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
+    val chosenLang = lang.getOrElse("en")
+
+    productRepository.getRule(id, chosenLang).map { rule =>
+      Ok(Json.toJson(rule))
+    } getOrElse {
+      BadRequest(s"Rule $id not found")
+    }
+  }
+
   def getRules(id: Long, lang: Option[String]) = authAction { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
     val chosenLang = lang.getOrElse("en")
     val rules = productRepository.getProductRules(id, chosenLang)
 
