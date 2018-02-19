@@ -28,7 +28,7 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     productRepository.get(id, chosenLang, includeSeq).map { product =>
       Ok(Json.toJson(product))
     } getOrElse {
-      BadRequest(s"Product $id not found")
+      NotFound(s"Product $id not found")
     }
   }
 
@@ -40,7 +40,7 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     productRepository.getBySku(sku, chosenLang, includeSeq).map { product =>
       Ok(Json.toJson(product))
     } getOrElse {
-      BadRequest(s"Product $sku not found")
+      NotFound(s"Product $sku not found")
     }
   }
 
@@ -51,7 +51,7 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     productRepository.getRule(id, chosenLang).map { rule =>
       Ok(Json.toJson(rule))
     } getOrElse {
-      BadRequest(s"Rule $id not found")
+      NotFound(s"Rule $id not found")
     }
   }
 

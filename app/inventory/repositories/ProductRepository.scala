@@ -6,9 +6,9 @@ import java.time.LocalDateTime
 import com.google.inject.{Inject, Singleton}
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest}
-import play.api.Logger
 import play.api.db.Database
 
+import scala.collection.immutable.SortedSet
 import scala.collection.immutable.Queue
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{ExecutionContext, Future}
@@ -305,7 +305,6 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
       )
 
       val sortField = sr.sortField.flatMap(allowedSortFields.get(_)).getOrElse("sku")
-      Logger.info(s"Sorting by [$sortField]")
 
       val sql =
         s"""
@@ -434,18 +433,16 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
   }
 
   private def hydrateProductCategory(rs: ResultSet): ProductCategory = {
-    val ts = rs.getTimestamp("c.modification_date")
-    val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
-
     ProductCategory(
       Some(rs.getLong("c.id")),
+      rs.getString("c.code"),
       Description(
         rs.getString("c.name"),
         rs.getString("c.short_description"),
         rs.getString("c.long_description")
       ),
       createdAt = rs.getTimestamp("c.creation_date").toLocalDateTime,
-      updatedAt = updatedAt
+      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("c.modification_date", rs)
     )
   }
 
@@ -459,6 +456,40 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
         .map(product => hydrateProductChild(product, rs))
         .getOrElse(throw new RuntimeException(s"$childProductId does not exist"))
     }(conn)
+  }
+
+  def getProductCategory(id: Long, lang: String): Option[ProductCategory] = db.withConnection { conn =>
+    val sql =
+      """
+         SELECT
+           c.*,
+          COALESCE(t.label, dt.label) AS `c.name`,
+          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `c.long_description`
+         FROM inv_product_categories AS c
+         JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
+         LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
+         WHERE c.id = @categoryId
+       """
+    val params = Map(
+      "langId" -> getLangId(lang).toString,
+      "categoryId" -> id.toString
+    )
+
+    val optCategory = DatabaseHelper.fetchOne(sql, params)(hydrateProductCategory)(conn)
+
+    optCategory.map { category =>
+      val parents = getCategoryParents(category.id.get)
+
+      category.copy(parents = parents)
+    }
+  }
+
+  private def getCategoryParents(categoryId: Long): SortedSet[String] = db.withConnection { conn =>
+    val sql = "SELECT DISTINCT parent.code FROM inv_product_categories actual JOIN inv_product_categories parent ON parent.left_id < actual.left_id AND parent.right_id > actual.right_id WHERE actual.id = @categoryId ORDER BY parent.left_id DESC"
+    val parents = DatabaseHelper.fetchMany(sql, Map("categoryId" -> categoryId.toString))(_.getString("code"))(conn)
+
+    parents.to[SortedSet]
   }
 
   private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {

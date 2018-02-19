@@ -4,8 +4,7 @@ import javax.inject._
 
 import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
-import inventory.requestAttributes.Attrs
-import inventory.util.{DatabaseHelper, SearchRequest}
+import inventory.util.SearchRequest
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
@@ -14,12 +13,6 @@ import scala.concurrent.ExecutionContext
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
-  def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction { req =>
-    val values = productRepository.getAttributeValues(attributeId, lang.getOrElse("en"))
-
-    Ok(Json.toJson(values))
-  }
-
   def get(id: Long, lang: Option[String], include: Option[String]) = authAction { req =>
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
@@ -27,7 +20,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     productRepository.get(id, chosenLang, includeSeq).map { product =>
       Ok(Json.toJson(product))
     } getOrElse {
-      BadRequest(s"Product $id not found")
+      NotFound(s"Product $id not found")
     }
   }
 
@@ -38,7 +31,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     productRepository.getBySku(sku, chosenLang, includeSeq).map { product =>
       Ok(Json.toJson(product))
     } getOrElse {
-      BadRequest(s"Product $sku not found")
+      NotFound(s"Product $sku not found")
     }
   }
 
@@ -48,7 +41,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     productRepository.getRule(id, chosenLang).map { rule =>
       Ok(Json.toJson(rule))
     } getOrElse {
-      BadRequest(s"Rule $id not found")
+      NotFound(s"Rule $id not found")
     }
   }
 
@@ -57,6 +50,12 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     val rules = productRepository.getProductRules(id, chosenLang)
 
     Ok(Json.toJson(rules))
+  }
+
+  def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction { req =>
+    val values = productRepository.getAttributeValues(attributeId, lang.getOrElse("en"))
+
+    Ok(Json.toJson(values))
   }
 
   def search(lang: Option[String], include: Option[String]) = authAction.async { req =>
@@ -68,6 +67,16 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
       Ok(Json.toJson(products))
     ) recover {
       case t: Throwable => ServiceUnavailable("Unexpected error")
+    }
+  }
+
+  def getCategory(id: Long, lang: Option[String]) = authAction {
+    val chosenLang = lang.getOrElse("en")
+
+    productRepository.getProductCategory(id, chosenLang).map(category =>
+      Ok(Json.toJson(category))
+    ) getOrElse {
+      NotFound(s"Product category $id not found")
     }
   }
 }
