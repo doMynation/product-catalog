@@ -8,10 +8,23 @@ import inventory.util.SearchRequest
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
-
 import scala.concurrent.ExecutionContext
+import cats.implicits._
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction { req =>
+    val ids = idsString.split(",").map(_.toInt).toList
+    val includeSeq = include.fold(Seq[String]())(_.split(","))
+    val chosenLang = lang.getOrElse("en")
+
+    val maybeProducts = ids.traverse(id => productRepository.get(id, chosenLang, includeSeq).toRight(id))
+
+    maybeProducts match {
+      case Right(products) => Ok(Json.toJson(products))
+      case Left(id) => NotFound(s"Product $id not found")
+    }
+  }
 
   def get(id: Long, lang: Option[String], include: Option[String]) = authAction { req =>
     val includeSeq = include.fold(Seq[String]())(_.split(","))

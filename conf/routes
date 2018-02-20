@@ -4,6 +4,7 @@ GET        /assets/*file                              controllers.Assets.version
 # Products
 GET        /products                                  inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
 GET        /products/$id<[0-9]+>                      inventory.controllers.ProductController.get(id: Long, lang: Option[String], include: Option[String])
+GET        /products/$ids<[0-9]+,+[0-9,]*>            inventory.controllers.ProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
 GET        /products/$sku<[a-zA-Z0-9-]+>              inventory.controllers.ProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
 GET        /products/:productId/rules                 inventory.controllers.ProductController.getRules(productId: Long, lang: Option[String])
 GET        /rules/:ruleId                             inventory.controllers.ProductController.getRule(ruleId: Long, lang: Option[String])
