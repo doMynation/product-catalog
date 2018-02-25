@@ -6,23 +6,25 @@ import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.db.Database
-import play.api.libs.json.Json
+import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
+
 import scala.concurrent.ExecutionContext
 import cats.implicits._
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction { req =>
-    val ids = idsString.split(",").map(_.toInt).toList
+    val ids = idsString.split(",").map(_.toInt)
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
-    val maybeProducts = ids.traverse(id => productRepository.get(id, chosenLang, includeSeq).toRight(id))
+    if (ids.length > 100) {
+      BadRequest("Maximum of 100 products at once")
+    } else {
+      val products = ids.map(productRepository.get(_, chosenLang, includeSeq)).flatten
 
-    maybeProducts match {
-      case Right(products) => Ok(Json.toJson(products))
-      case Left(id) => NotFound(s"Product $id not found")
+      Ok(Json.toJson(products))
     }
   }
 

@@ -14,6 +14,21 @@ import scala.concurrent.ExecutionContext
 
 class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
+  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction { req =>
+    implicit val store = req.attrs.get(Attrs.Store)
+    val ids = idsString.split(",").map(_.toInt)
+    val includeSeq = include.fold(Seq[String]())(_.split(","))
+    val chosenLang = lang.getOrElse("en")
+
+    if (ids.length > 100) {
+      BadRequest("Maximum of 100 products at once")
+    } else {
+      val products = ids.map(productRepository.get(_, chosenLang, includeSeq)).flatten
+
+      Ok(Json.toJson(products))
+    }
+  }
+
   def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction { req =>
     val values = productRepository.getAttributeValues(attributeId, lang.getOrElse("en"))
 
