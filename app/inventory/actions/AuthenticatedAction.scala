@@ -6,8 +6,8 @@ import javax.inject.Inject
 import accounting.repositories.StoreRepository
 import inventory.entities.Store
 import inventory.requestAttributes.Attrs
+import play.api.Logger
 import play.api.db.Database
-
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc.Results._
 
@@ -24,8 +24,12 @@ class AuthenticatedAction @Inject()(parser: BodyParsers.Default, db: Database, s
     } yield store
 
     // Save the store in the request and respond
-    storeOpt.fold(Future(Unauthorized("Invalid API Key"))) { store =>
+    storeOpt.map { store =>
       block(request.addAttr(Attrs.Store, store))
+    } getOrElse {
+      Logger.info(s"Denied ${request.remoteAddress} with key ${request.headers.get("X-Api-Key").getOrElse("UNDEFINED")}")
+
+      Future(Unauthorized("Invalid API Key"))
     }
   }
 
