@@ -4,12 +4,16 @@ import play.api.mvc._
 import javax.inject.Inject
 
 import accounting.repositories.StoreRepository
+import cats.data.OptionT
 import inventory.entities.Store
 import inventory.requestAttributes.Attrs
 import play.api.Logger
 import play.api.db.Database
-import scala.concurrent.{ExecutionContext, Future}
+
+import scala.concurrent.{Await, ExecutionContext, Future, TimeoutException}
+import scala.concurrent.duration._
 import play.api.mvc.Results._
+import shared.StoreApiKey
 
 class AuthenticatedAction @Inject()(parser: BodyParsers.Default, db: Database, storeRepo: StoreRepository)
                                    (implicit ec: ExecutionContext) extends ActionBuilderImpl(parser) {
@@ -36,11 +40,19 @@ class AuthenticatedAction @Inject()(parser: BodyParsers.Default, db: Database, s
   private def checkApiKey(apiKey: String, remoteAddress: String): Option[Store] = {
     // First check against the cache
     if (cachedKeys.contains((apiKey, remoteAddress))) {
+      Logger.info(s"Got [$apiKey] from cache")
       return cachedKeys((apiKey, remoteAddress))
     }
 
     // Check if a store corresponds to the given api key and remote address
-    val storeOpt = storeRepo.getByApiKey(apiKey, remoteAddress)
+    val storeF = storeRepo.get(StoreApiKey(apiKey)).recover {
+      case t: TimeoutException => {
+        Logger.info(s"Timed out while fetching store for api key $apiKey: ${t.getMessage}")
+        None
+      }
+    }
+
+    val storeOpt = Await.result(storeF, 3 second)
 
     // Cache the result
     cachedKeys = cachedKeys + ((apiKey, remoteAddress) -> storeOpt)

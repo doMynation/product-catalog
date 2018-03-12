@@ -2,19 +2,18 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
-
 import com.google.inject.{Inject, Singleton}
+import infrastructure.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest}
 import play.api.db.Database
-
 import scala.collection.immutable.SortedSet
 import scala.collection.immutable.Queue
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
-final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionContext) {
+final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
   // Type alias
   type Product = inventory.entities.Product
 
@@ -253,7 +252,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: ExecutionCont
 
       var priceColumn = "p.retail_price"
 
-      wheres += "1 = 1"
+      wheres += "p.status = 1"
       havings += "1 = 1"
 
       // `sku` filter

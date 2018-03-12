@@ -52,4 +52,13 @@ object NullableResultSetExtractor {
       else Some(v.toLocalDateTime)
     }
   }
+
+  implicit val bigDecimalNullableExtractor = new NullableResultSetExtractor[BigDecimal] {
+    override def getOpt(columnName: String, rs: ResultSet): Option[BigDecimal] = {
+      val v = rs.getBigDecimal(columnName)
+
+      if (rs.wasNull()) None
+      else Some(BigDecimal(v))
+    }
+  }
 }

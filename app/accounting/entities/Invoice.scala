@@ -9,9 +9,26 @@ object Invoice {
 }
 
 case class Invoice(
-                    val id: Option[Long],
-                    sku: String,
+                    id: Long,
+                    name: String,
+                    orderId: Option[Long] = None,
+                    customerId: Long,
+                    authorId: Long,
+                    storeId: Long,
+                    subtotal: BigDecimal,
+                    total: BigDecimal,
+                    paidAmount: BigDecimal,
+                    currency: String,
                     createdAt: LocalDateTime = LocalDateTime.now,
-                    updatedAt: Option[LocalDateTime] = None
+                    updatedAt: Option[LocalDateTime] = None,
+                    invoiceType: String = InvoiceType.INVOICE,
+                    status: String = InvoiceStatus.NORMAL,
+                    metadata: Map[String, String] = Map()
                   ) extends TimestampEntity {
+
+  def isPaid: Boolean = status == InvoiceStatus.PAID
+
+  def isCancelled: Boolean = status == InvoiceStatus.CANCELLED
+
+  def balance: BigDecimal = total - paidAmount
 }

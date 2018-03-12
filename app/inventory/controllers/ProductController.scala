@@ -6,7 +6,7 @@ import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.db.Database
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.Json
 import play.api.mvc._
 
 import scala.concurrent.ExecutionContext
