@@ -1,8 +1,9 @@
 package inventory.controllers
 
+import java.util.UUID
 import javax.inject._
 
-import accounting.entities.{Invoice, InvoiceInclude, InvoiceTax, TaxComponent}
+import accounting.entities.{Invoice, InvoiceInclude}
 import accounting.repositories.InvoiceRepository
 import akka.actor.ActorSystem
 import cats.data.OptionT
@@ -18,6 +19,26 @@ import shared.InvoiceId
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, invoiceRepository: InvoiceRepository, actorSystem: ActorSystem)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def getByUUID(uuid: String, storeId: Long, include: Option[String]) = Action.async {
+    val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
+    val invoiceUUID = UUID.fromString(uuid)
+    Logger.info(invoiceUUID.toString)
+
+    val data = for {
+      invoice <- OptionT(invoiceRepository.get(invoiceUUID, storeId))
+      includes <- OptionT.liftF(handleIncludes(invoice, includeSeq))
+    } yield (invoice, includes)
+
+    data map { tuple =>
+      Ok(JsObject(Seq(
+        "invoice" -> Json.toJson(tuple._1),
+        "includes" -> Json.toJson(tuple._2)
+      )))
+    } getOrElse {
+      NotFound(s"Invoice $uuid not found")
+    }
+  }
 
   def get(invoiceId: Long, storeId: Long, include: Option[String]) = Action.async {
     val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))

@@ -1,6 +1,8 @@
 package accounting.entities
 
 import java.time.LocalDateTime
+import java.util.UUID
+
 import play.api.libs.json.{Json, Writes}
 import shared.TimestampEntity
 
@@ -10,6 +12,7 @@ object Invoice {
 
 case class Invoice(
                     id: Long,
+                    uuid: UUID,
                     name: String,
                     orderId: Option[Long] = None,
                     customerId: Long,

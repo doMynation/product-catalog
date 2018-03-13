@@ -2,6 +2,7 @@ package accounting.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
+import java.util.UUID
 import javax.inject.Inject
 
 import accounting.entities._
@@ -34,6 +35,44 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
+  def get(invoiceId: InvoiceId, storeId: Long): Future[Option[Invoice]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+         SELECT i.*, c.*, o.sale_id AS orderName
+         FROM s_invoices i
+         JOIN customers c ON c.id = i.customer_id
+         LEFT JOIN s_orders o ON o.id = i.order_id
+         WHERE i.id = @invoiceId AND i.branch_id = @storeId
+      """
+      val params = Map(
+        "storeId" -> storeId.toString,
+        "invoiceId" -> invoiceId.toString
+      )
+
+      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
+    }
+  }
+
+  def get(invoiceId: UUID, storeId: Long): Future[Option[Invoice]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+         SELECT i.*, c.*, o.sale_id AS orderName
+         FROM s_invoices i
+         JOIN customers c ON c.id = i.customer_id
+         LEFT JOIN s_orders o ON o.id = i.order_id
+         WHERE i.url_id = @invoiceId AND i.branch_id = @storeId
+      """
+      val params = Map(
+        "storeId" -> storeId.toString,
+        "invoiceId" -> invoiceId.toString
+      )
+
+      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
+    }
+  }
+
   def getInvoiceTaxes(invoiceId: Long): Future[Seq[InvoiceTax]] = Future {
     db.withConnection { conn =>
       val sql =
@@ -55,45 +94,6 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         InvoiceTax(hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
     }
-  }
-
-  def get(invoiceId: InvoiceId, storeId: Long): Future[Option[Invoice]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        """
-         SELECT i.*, c.*, o.sale_id AS orderName
-         FROM s_invoices i
-         JOIN customers c ON c.id = i.customer_id
-         LEFT JOIN s_orders o ON o.id = i.order_id
-         WHERE i.id = @invoiceId AND i.branch_id = @storeId
-      """
-      val params = Map(
-        "storeId" -> storeId.toString,
-        "invoiceId" -> invoiceId.toString
-      )
-
-      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
-    }
-  }
-
-  def getByStore(invoiceId: InvoiceId, storeId: Long): Option[Invoice] = db.withConnection { conn =>
-    val sql =
-      """
-     SELECT
-      i.*,
-      c.*,
-      o.sale_id AS orderName
-     FROM s_invoices i
-     JOIN customers c ON c.id = i.customer_id
-     LEFT JOIN s_orders o ON o.id = i.order_id
-     WHERE i.id = @invoiceId AND i.branch_id = @storeId
-  """
-    val params = Map(
-      "storeId" -> storeId.toString,
-      "invoiceId" -> invoiceId.toString
-    )
-
-    DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
   }
 
   def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Invoice]] = Future {
@@ -200,6 +200,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
 
     Invoice(
       id = rs.getLong("id"),
+      uuid = UUID.fromString(rs.getString("url_id")),
       orderId = DatabaseHelper.getNullable[Long]("order_id", rs),
       authorId = rs.getLong("user_id"),
       storeId = rs.getLong("branch_id"),

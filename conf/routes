@@ -1,25 +1,26 @@
 # Map static resources from the /public folder to the /assets URL path
-GET        /assets/*file                                       controllers.Assets.versioned(path="/public", file: Asset)
+GET        /assets/*file                                                                                                       controllers.Assets.versioned(path="/public", file: Asset)
 
 # Products
-GET        /products                                           inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
-GET        /products/$id<[0-9]+>                               inventory.controllers.ProductController.get(id: Long, lang: Option[String], include: Option[String])
-GET        /products/$ids<[0-9]+,+[0-9,]*>                     inventory.controllers.ProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
-GET        /products/$sku<[a-zA-Z0-9-]+>                       inventory.controllers.ProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
-GET        /products/:productId/rules                          inventory.controllers.ProductController.getRules(productId: Long, lang: Option[String])
-GET        /rules/:ruleId                                      inventory.controllers.ProductController.getRule(ruleId: Long, lang: Option[String])
+GET        /products                                                                                                           inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
+GET        /products/$id<[0-9]+>                                                                                               inventory.controllers.ProductController.get(id: Long, lang: Option[String], include: Option[String])
+GET        /products/$ids<[0-9]+,+[0-9,]*>                                                                                     inventory.controllers.ProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
+GET        /products/$sku<[a-zA-Z0-9-]+>                                                                                       inventory.controllers.ProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
+GET        /products/:productId/rules                                                                                          inventory.controllers.ProductController.getRules(productId: Long, lang: Option[String])
+GET        /rules/:ruleId                                                                                                      inventory.controllers.ProductController.getRule(ruleId: Long, lang: Option[String])
 
-GET        /productCategories/$id<[0-9]+>                      inventory.controllers.ProductController.getCategory(id: Long, lang: Option[String])
+GET        /productCategories/$id<[0-9]+>                                                                                      inventory.controllers.ProductController.getCategory(id: Long, lang: Option[String])
 
-GET        /store/products                                     inventory.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
-GET        /store/products/$id<[0-9]+>                         inventory.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
-GET        /store/products/$ids<[0-9]+,+[0-9,]*>               inventory.controllers.StoreProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
-GET        /store/products/$sku<[a-zA-Z0-9-]+>                 inventory.controllers.StoreProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
-GET        /store/products/:productId/rules                    inventory.controllers.StoreProductController.getRules(productId: Long, lang: Option[String])
-GET        /store/rules/:ruleId                                inventory.controllers.StoreProductController.getRule(ruleId: Long, lang: Option[String])
+GET        /store/products                                                                                                     inventory.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
+GET        /store/products/$id<[0-9]+>                                                                                         inventory.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
+GET        /store/products/$ids<[0-9]+,+[0-9,]*>                                                                               inventory.controllers.StoreProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
+GET        /store/products/$sku<[a-zA-Z0-9-]+>                                                                                 inventory.controllers.StoreProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
+GET        /store/products/:productId/rules                                                                                    inventory.controllers.StoreProductController.getRules(productId: Long, lang: Option[String])
+GET        /store/rules/:ruleId                                                                                                inventory.controllers.StoreProductController.getRule(ruleId: Long, lang: Option[String])
 
-GET        /attributes/:attributeId/values                     inventory.controllers.ProductController.getAttributeValues(attributeId: Long, lang: Option[String])
+GET        /attributes/:attributeId/values                                                                                     inventory.controllers.ProductController.getAttributeValues(attributeId: Long, lang: Option[String])
 
 # Invoices
-GET        /stores/:storeId/invoices                           inventory.controllers.StoreInvoiceController.search(storeId: Long)
-GET        /stores/:storeId/invoices/$invoiceId<[0-9]+>        inventory.controllers.StoreInvoiceController.get(invoiceId: Long, storeId: Long, include: Option[String])
+GET        /stores/:storeId/invoices                                                                                           inventory.controllers.StoreInvoiceController.search(storeId: Long)
+GET        /stores/:storeId/invoices/$invoiceId<[0-9]+>                                                                        inventory.controllers.StoreInvoiceController.get(invoiceId: Long, storeId: Long, include: Option[String])
+GET        /stores/:storeId/invoices/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>        inventory.controllers.StoreInvoiceController.getByUUID(uuid: String, storeId: Long, include: Option[String])
