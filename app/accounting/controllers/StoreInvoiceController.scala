@@ -4,11 +4,11 @@ import java.util.UUID
 import javax.inject._
 
 import accounting.entities.{Invoice, InvoiceInclude}
-import accounting.repositories.InvoiceRepository
-import akka.actor.ActorSystem
+import accounting.repositories.{CustomerRepository, InvoiceRepository}
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
+import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.Logger
 import play.api.db.Database
@@ -18,16 +18,23 @@ import shared.InvoiceId
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class StoreInvoiceController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, invoiceRepository: InvoiceRepository, actorSystem: ActorSystem)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+class StoreInvoiceController @Inject()(
+                                        authAction: AuthenticatedAction,
+                                        cc: ControllerComponents,
+                                        db: Database,
+                                        invoiceRepository: InvoiceRepository,
+                                        customerRepository: CustomerRepository,
+                                        productRepository: ProductRepository
+                                      )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
-  def getByUUID(uuid: String, storeId: Long, include: Option[String]) = Action.async {
+  def getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
+    val chosenLang = lang.getOrElse("en")
     val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
     val invoiceUUID = UUID.fromString(uuid)
-    Logger.info(invoiceUUID.toString)
 
     val data = for {
       invoice <- OptionT(invoiceRepository.get(invoiceUUID, storeId))
-      includes <- OptionT.liftF(handleIncludes(invoice, includeSeq))
+      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
     } yield (invoice, includes)
 
     data map { tuple =>
@@ -40,12 +47,13 @@ class StoreInvoiceController @Inject()(authAction: AuthenticatedAction, cc: Cont
     }
   }
 
-  def get(invoiceId: Long, storeId: Long, include: Option[String]) = Action.async {
+  def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
+    val chosenLang = lang.getOrElse("en")
 
     val data = for {
       invoice <- OptionT(invoiceRepository.get(InvoiceId(invoiceId), storeId))
-      includes <- OptionT.liftF(handleIncludes(invoice, includeSeq))
+      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
     } yield (invoice, includes)
 
     data map { tuple =>
@@ -72,16 +80,34 @@ class StoreInvoiceController @Inject()(authAction: AuthenticatedAction, cc: Cont
     }
   }
 
-  private def handleIncludes(invoice: Invoice, codes: Seq[String]): Future[InvoiceInclude] = {
-    codes.foldLeft(Future(InvoiceInclude())) {
-      (acc, code) =>
-        code match {
-          case "taxes" => for {
+  def handleIncludes(invoice: Invoice, lang: String, codes: Seq[String]): Future[InvoiceInclude] = {
+    codes.foldLeft(Future(InvoiceInclude())) { (acc, code) =>
+      code match {
+        case "taxes" => for {
+          inc <- acc
+          invoiceTaxes <- invoiceRepository.getTaxes(InvoiceId(invoice.id))
+        } yield inc.copy(taxes = Some(invoiceTaxes))
+        case "customer" => for {
+          inc <- acc
+          customer <- customerRepository.get(invoice.customerId)
+        } yield inc.copy(customer = customer)
+        case "lineItems" => {
+          // Get the line items
+          for {
             inc <- acc
-            invoiceTaxes <- invoiceRepository.getInvoiceTaxes(invoice.id)
-          } yield inc.copy(taxes = invoiceTaxes)
-          case _ => acc
+            lineItems <- invoiceRepository.getLineItems(InvoiceId(invoice.id))
+          } yield {
+            // Get all products
+            val lineItemsWithProducts = lineItems.map { li =>
+              li.copy(product = li.productId.flatMap(productId => productRepository.get(productId, lang, List("attributes"))))
+            }
+
+            // Get the product details of each line item
+            inc.copy(lineItems = Some(lineItemsWithProducts))
+          }
         }
+        case _ => acc
+      }
     }
   }
 }

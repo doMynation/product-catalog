@@ -73,7 +73,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
-  def getInvoiceTaxes(invoiceId: Long): Future[Seq[InvoiceTax]] = Future {
+  def getTaxes(invoiceId: InvoiceId): Future[Seq[InvoiceTax]] = Future {
     db.withConnection { conn =>
       val sql =
         """
@@ -94,6 +94,33 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         InvoiceTax(hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
     }
+  }
+
+  def getLineItems(invoiceId: InvoiceId): Future[Seq[LineItem]] = Future {
+    db.withConnection { conn =>
+      val sql = """SELECT * FROM s_invoice_products WHERE invoice_id = @invoiceId"""
+
+      val lineItems = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
+      val lineItemAttributeOverrides = getLineItemConfigurations(invoiceId)
+
+      lineItems.map(li => li.copy(configurations = lineItemAttributeOverrides.get(li.id).getOrElse(Seq())))
+    }
+  }
+
+  private def getLineItemConfigurations(invoiceId: InvoiceId): Map[Long, Seq[(String, String)]] = db.withConnection { conn =>
+    val sql =
+      """
+          SELECT *
+          FROM s_invoice_product_attributes AS ipa
+          JOIN s_invoice_products ip ON ip.id = ipa.product_record_id
+          WHERE ip.invoice_id = @invoiceId
+        """
+
+    val attributesData: Seq[(Long, String, String)] = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
+      (rs.getLong("product_record_id"), rs.getString("attribute_code"), rs.getString("attribute_value"))
+    }(conn)
+
+    attributesData.groupBy(_._1).mapValues(_.map(tuple => (tuple._2, tuple._3)))
   }
 
   def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Invoice]] = Future {
@@ -194,6 +221,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     val invoiceType = if (rs.getInt("type_id") == 1) InvoiceType.INVOICE else InvoiceType.CONTRACT
     val invoiceStatus = InvoiceStatus.fromId(rs.getInt("status")).getOrElse(InvoiceStatus.NORMAL)
     val metadata = Map(
+      "note" -> rs.getString("i.note"),
       "customerName" -> rs.getString("c.full_name"),
       "orderName" -> DatabaseHelper.getNullable[String]("orderName", rs).getOrElse("")
     )
@@ -225,4 +253,16 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       BigDecimal(rs.getBigDecimal("componentRate"))
     )
 
+  private def hydrateLineItem(rs: ResultSet): LineItem = {
+    val productId = rs.getLong("product_id")
+
+    LineItem(
+      rs.getLong("id"),
+      if (productId == 0) None else Some(productId),
+      rs.getInt("quantity"),
+      BigDecimal(rs.getBigDecimal("retail_price")),
+      BigDecimal(rs.getBigDecimal("sale_price")),
+      LineItemType.fromId(rs.getInt("status")).getOrElse(LineItemType.NORMAL)
+    )
+  }
 }

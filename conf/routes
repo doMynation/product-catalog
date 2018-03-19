@@ -22,5 +22,5 @@ GET        /attributes/:attributeId/values                                      
 
 # Invoices
 GET        /stores/:storeId/invoices                                                                                           inventory.controllers.StoreInvoiceController.search(storeId: Long)
-GET        /stores/:storeId/invoices/$invoiceId<[0-9]+>                                                                        inventory.controllers.StoreInvoiceController.get(invoiceId: Long, storeId: Long, include: Option[String])
-GET        /stores/:storeId/invoices/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>        inventory.controllers.StoreInvoiceController.getByUUID(uuid: String, storeId: Long, include: Option[String])
+GET        /stores/:storeId/invoices/$invoiceId<[0-9]+>                                                                        inventory.controllers.StoreInvoiceController.get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String])
+GET        /stores/:storeId/invoices/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>        inventory.controllers.StoreInvoiceController.getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String])

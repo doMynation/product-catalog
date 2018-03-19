@@ -1,10 +1,15 @@
 package sales.entities
 
+import play.api.libs.json.{Json, Writes}
+
+object Customer {
+  implicit val addressWrites: Writes[Customer] = Json.writes[Customer]
+}
+
 case class Customer(
                      id: Long,
                      fullName: String,
-                     phoneNumbers: Seq[String],
-                     email: String,
-                     billingAddress: Address,
-                     shippingAddress: Address
+                     emails: Seq[String] = Seq(),
+                     phoneNumbers: Seq[String] = Seq(),
+                     addresses: Seq[Address] = Seq(),
                    )

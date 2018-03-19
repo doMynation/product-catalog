@@ -14,6 +14,4 @@ case class ProductAttribute(
                              valueSku: Option[String] = None,
                              isEditable: Boolean,
                              isReference: Boolean
-                           ) {
-
-}
+                           )

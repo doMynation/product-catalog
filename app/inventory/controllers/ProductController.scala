@@ -22,7 +22,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     if (ids.length > 100) {
       BadRequest("Maximum of 100 products at once")
     } else {
-      val products = ids.map(productRepository.get(_, chosenLang, includeSeq)).flatten
+      val products = ids.flatMap(productRepository.get(_, chosenLang, includeSeq))
 
       Ok(Json.toJson(products))
     }
