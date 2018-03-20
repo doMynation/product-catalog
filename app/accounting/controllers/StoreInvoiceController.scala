@@ -5,6 +5,7 @@ import javax.inject._
 
 import accounting.entities.{Invoice, InvoiceInclude}
 import accounting.repositories.{CustomerRepository, InvoiceRepository}
+import akka.actor.ActorSystem
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
@@ -99,7 +100,7 @@ class StoreInvoiceController @Inject()(
           } yield {
             // Get all products
             val lineItemsWithProducts = lineItems.map { li =>
-              li.copy(product = li.productId.flatMap(productId => productRepository.get(productId, lang, List("attributes"))))
+              li.copy(product = li.productId.flatMap(productId => productRepository.get(productId, lang)))
             }
 
             // Get the product details of each line item

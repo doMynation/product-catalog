@@ -15,5 +15,6 @@ case class LineItem(
                      unitPrice: BigDecimal,
                      lineItemType: String,
                      product: Option[inventory.entities.Product] = None,
-                     configurations: Seq[(String, String)] = Seq()
+                     configurations: Seq[(String, String)] = Seq(),
+                     metadata: Map[String, String] = Map()
                    )

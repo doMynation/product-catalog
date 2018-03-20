@@ -262,7 +262,10 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       rs.getInt("quantity"),
       BigDecimal(rs.getBigDecimal("retail_price")),
       BigDecimal(rs.getBigDecimal("sale_price")),
-      LineItemType.fromId(rs.getInt("status")).getOrElse(LineItemType.NORMAL)
+      LineItemType.fromId(rs.getInt("status")).getOrElse(LineItemType.NORMAL),
+      metadata = Map(
+        "productName" -> rs.getString("product_label")
+      )
     )
   }
 }
