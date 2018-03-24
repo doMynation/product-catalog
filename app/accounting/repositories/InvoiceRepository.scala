@@ -4,14 +4,11 @@ import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
-
 import accounting.entities._
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
-import play.api.Logger
 import play.api.db.{Database, NamedDatabase}
-import shared.{InvoiceId, Repository}
-
+import shared.InvoiceId
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -103,7 +100,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       val lineItems = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
       val lineItemAttributeOverrides = getLineItemConfigurations(invoiceId)
 
-      lineItems.map(li => li.copy(configurations = lineItemAttributeOverrides.get(li.id).getOrElse(Seq())))
+      lineItems.map(li => li.copy(configurations = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
     }
   }
 
@@ -125,6 +122,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
 
   def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Invoice]] = Future {
     db.withConnection { conn =>
+      val nonEmptyFilters = sr.filters.mapValues(_.trim).filterNot(_._2.isEmpty)
       val wheres = new ListBuffer[String]()
       val havings = new ListBuffer[String]()
       val joins = new ListBuffer[String]()
@@ -134,31 +132,31 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       havings += "1 = 1"
 
       // `name` filter
-      sr.filters.get("name").foreach(value => {
+      nonEmptyFilters.get("name").foreach(value => {
         wheres += "i.sale_id LIKE @name"
         params = params + ("name" -> s"%$value%")
       })
 
       // `storeId` filter
-      sr.filters.get("storeId").foreach(value => {
+      nonEmptyFilters.get("storeId").foreach(value => {
         wheres += "i.branch_id = @storeId"
-        params = params + ("storeId" -> value.toString)
+        params = params + ("storeId" -> value)
       })
 
       // `customerName` filter
-      sr.filters.get("customerName").foreach(value => {
+      nonEmptyFilters.get("customerName").foreach(value => {
         wheres += "c.full_name LIKE @customerName"
         params = params + ("customerName" -> s"%$value%")
       })
 
       // `orderName` filter
-      sr.filters.get("orderName").foreach(value => {
+      nonEmptyFilters.get("orderName").foreach(value => {
         wheres += "o.sale_id LIKE @orderName"
         params = params + ("orderName" -> s"%$value%")
       })
 
       // `status` filter
-      sr.filters.get("status").flatMap(InvoiceStatus.fromString(_)).foreach(statusId => {
+      nonEmptyFilters.get("status").flatMap(InvoiceStatus.fromString).foreach(statusId => {
         wheres += "i.status = @statusId"
         params = params + ("statusId" -> statusId.toString)
       })
@@ -180,7 +178,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         "customerName" -> "c.full_name",
       )
 
-      val sortField = sr.sortField.flatMap(allowedSortFields.get(_)).getOrElse("i.creation_date")
+      val sortField = sr.sortField.flatMap(allowedSortFields.get).getOrElse("i.creation_date")
       val countSql =
         s"""
               SELECT COUNT(*)
@@ -209,7 +207,6 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
               ORDER BY $sortField ${sr.sortOrder}
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
-
       val invoices = DatabaseHelper.fetchMany(fetchSql, params)(hydrateInvoice)(conn)
 
       SearchResult(invoices, totalCount.get)

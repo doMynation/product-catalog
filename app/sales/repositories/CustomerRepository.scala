@@ -1,15 +1,12 @@
-package accounting.repositories
+package sales.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
-
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Address, AddressType, Customer}
 import shared.PhoneNumber
-
-import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
 final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -69,98 +66,7 @@ final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database
     DatabaseHelper.fetchMany[Address](sql, params)(hydrateAddress)(conn)
   }
 
-  def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Customer]] = Future {
-    db.withConnection { conn =>
-      val wheres = new ListBuffer[String]()
-      val havings = new ListBuffer[String]()
-      val joins = new ListBuffer[String]()
-      var params: Map[String, String] = Map()
-
-      wheres += "1 = 1"
-      havings += "1 = 1"
-
-      // `name` filter
-      sr.filters.get("name").foreach(value => {
-        wheres += "i.sale_id LIKE @name"
-        params = params + ("name" -> s"%$value%")
-      })
-
-      // `storeId` filter
-      sr.filters.get("storeId").foreach(value => {
-        wheres += "i.branch_id = @storeId"
-        params = params + ("storeId" -> value.toString)
-      })
-
-      // `customerName` filter
-      sr.filters.get("customerName").foreach(value => {
-        wheres += "c.full_name LIKE @customerName"
-        params = params + ("customerName" -> s"%$value%")
-      })
-
-      // `orderName` filter
-      sr.filters.get("orderName").foreach(value => {
-        wheres += "o.sale_id LIKE @orderName"
-        params = params + ("orderName" -> s"%$value%")
-      })
-
-      //      // `status` filter
-      //      sr.filters.get("status").flatMap(InvoiceStatus.fromString(_)).foreach(statusId => {
-      //        wheres += "i.status = @statusId"
-      //        params = params + ("statusId" -> statusId.toString)
-      //      })
-
-      val allowedSortFields = Map(
-        "id" -> "i.id",
-        "orderId" -> "i.order_id",
-        "orderName" -> "o.sale_id",
-        "name" -> "i.sale_id",
-        "type" -> "i.type_id",
-        "currency" -> "i.currency_id",
-        "subtotal" -> "i.sub_total",
-        "total" -> "i.total",
-        "balance" -> "i.balance",
-        "paidAmount" -> "i.deposit",
-        "createdAt" -> "i.creation_date",
-        "updatedAt" -> "i.modification_date",
-        "status" -> "i.status",
-        "customerName" -> "c.full_name",
-      )
-
-      val sortField = sr.sortField.flatMap(allowedSortFields.get(_)).getOrElse("i.creation_date")
-      val countSql =
-        s"""
-              SELECT COUNT(*)
-              FROM s_invoices i
-              JOIN customers c ON c.id = i.customer_id
-              LEFT JOIN s_orders o ON o.id = i.order_id
-              ${joins.mkString(" ")}
-              WHERE ${wheres.mkString(" AND ")}
-              HAVING ${havings.mkString(" AND ")}
-        """
-
-      val totalCount = DatabaseHelper.fetchColumn[Int](countSql, params)(conn)
-
-      val fetchSql =
-        s"""
-              SELECT
-                i.*,
-                c.*,
-                o.sale_id AS orderName
-              FROM s_invoices i
-              JOIN customers c ON c.id = i.customer_id
-              LEFT JOIN s_orders o ON o.id = i.order_id
-              ${joins.mkString(" ")}
-              WHERE ${wheres.mkString(" AND ")}
-              HAVING ${havings.mkString(" AND ")}
-              ORDER BY $sortField ${sr.sortOrder}
-              ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
-        """
-
-      val results = DatabaseHelper.fetchMany(fetchSql, params)(hydrateCustomer)(conn)
-
-      SearchResult(results, totalCount.get)
-    }
-  }
+  def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Customer]] = ???
 
   private def hydrateCustomer(rs: ResultSet): Customer = {
     val phoneNumbers = List(

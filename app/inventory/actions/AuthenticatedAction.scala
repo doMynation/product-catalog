@@ -40,7 +40,6 @@ class AuthenticatedAction @Inject()(parser: BodyParsers.Default, db: Database, s
   private def checkApiKey(apiKey: String, remoteAddress: String): Option[Store] = {
     // First check against the cache
     if (cachedKeys.contains((apiKey, remoteAddress))) {
-      Logger.info(s"Got [$apiKey] from cache")
       return cachedKeys((apiKey, remoteAddress))
     }
 

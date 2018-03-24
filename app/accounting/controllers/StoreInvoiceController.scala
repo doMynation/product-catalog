@@ -1,11 +1,9 @@
-package inventory.controllers
+package accounting.controllers
 
 import java.util.UUID
 import javax.inject._
-
 import accounting.entities.{Invoice, InvoiceInclude}
-import accounting.repositories.{CustomerRepository, InvoiceRepository}
-import akka.actor.ActorSystem
+import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
@@ -15,8 +13,8 @@ import play.api.Logger
 import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
+import sales.repositories.CustomerRepository
 import shared.InvoiceId
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(
