@@ -70,6 +70,18 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
+  def getStoreBalance(storeId: Long): Future[Option[BigDecimal]] = Future {
+    db.withConnection { conn =>
+      val unpaidStatusId = InvoiceStatus.fromString(InvoiceStatus.NORMAL).get
+      val sql = "SELECT SUM(balance) AS totalBalance FROM s_invoices WHERE branch_id = @storeId AND status = @invoiceStatus"
+      val params = Map("storeId" -> storeId.toString, "invoiceStatus" -> unpaidStatusId.toString)
+
+      DatabaseHelper.fetchOne[Option[BigDecimal]](sql, params) { rs =>
+        DatabaseHelper.getNullable[BigDecimal]("totalBalance", rs)
+      }(conn).flatten
+    }
+  }
+
   def getTaxes(invoiceId: InvoiceId): Future[Seq[InvoiceTax]] = Future {
     db.withConnection { conn =>
       val sql =

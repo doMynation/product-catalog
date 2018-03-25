@@ -18,9 +18,14 @@ GET        /store/products/$sku<[a-zA-Z0-9-]+>                                  
 GET        /store/products/:productId/rules                                                                                    inventory.controllers.StoreProductController.getRules(productId: Long, lang: Option[String])
 GET        /store/rules/:ruleId                                                                                                inventory.controllers.StoreProductController.getRule(ruleId: Long, lang: Option[String])
 
+# Attributes
 GET        /attributes/:attributeId/values                                                                                     inventory.controllers.ProductController.getAttributeValues(attributeId: Long, lang: Option[String])
 
 # Invoices
 GET        /stores/:storeId/invoices                                                                                           accounting.controllers.StoreInvoiceController.search(storeId: Long)
 GET        /stores/:storeId/invoices/$invoiceId<[0-9]+>                                                                        accounting.controllers.StoreInvoiceController.get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String])
 GET        /stores/:storeId/invoices/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>        accounting.controllers.StoreInvoiceController.getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String])
+
+# Accounting/Finance
+GET        /stores/:storeId/balance                                                                                           accounting.controllers.StoreInvoiceController.balance(storeId: Long)
+

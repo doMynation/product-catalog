@@ -26,6 +26,25 @@ class StoreInvoiceController @Inject()(
                                         productRepository: ProductRepository
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
+  def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
+    val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
+    val chosenLang = lang.getOrElse("en")
+
+    val data = for {
+      invoice <- OptionT(invoiceRepository.get(InvoiceId(invoiceId), storeId))
+      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
+    } yield (invoice, includes)
+
+    data map { tuple =>
+      Ok(JsObject(Seq(
+        "invoice" -> Json.toJson(tuple._1),
+        "includes" -> Json.toJson(tuple._2)
+      )))
+    } getOrElse {
+      NotFound(s"Invoice $invoiceId not found")
+    }
+  }
+
   def getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val chosenLang = lang.getOrElse("en")
     val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
@@ -46,23 +65,12 @@ class StoreInvoiceController @Inject()(
     }
   }
 
-  def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
-    val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
-    val chosenLang = lang.getOrElse("en")
+  def balance(storeId: Long) = Action.async {
+    val balanceT = OptionT(invoiceRepository.getStoreBalance(storeId))
 
-    val data = for {
-      invoice <- OptionT(invoiceRepository.get(InvoiceId(invoiceId), storeId))
-      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
-    } yield (invoice, includes)
-
-    data map { tuple =>
-      Ok(JsObject(Seq(
-        "invoice" -> Json.toJson(tuple._1),
-        "includes" -> Json.toJson(tuple._2)
-      )))
-    } getOrElse {
-      NotFound(s"Invoice $invoiceId not found")
-    }
+    balanceT
+      .map(balance => Ok(Json.toJson(balance)))
+      .getOrElse(NotFound(s"Store $storeId not found"))
   }
 
   def search(storeId: Long) = Action.async { implicit req =>

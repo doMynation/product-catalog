@@ -7,13 +7,9 @@ trait ResultSetFetchable[T] {
 }
 
 object ResultSetFetchable {
-  implicit val stringFetchable = new ResultSetFetchable[String] {
-    override def get(rs: ResultSet) = rs.getString(1)
-  }
-
-  implicit val intFetchable = new ResultSetFetchable[Int] {
-    override def get(rs: ResultSet) = rs.getInt(1)
-  }
+  implicit val stringFetchable: ResultSetFetchable[String] = (rs: ResultSet) => rs.getString(1)
+  implicit val intFetchable: ResultSetFetchable[Int] = (rs: ResultSet) => rs.getInt(1)
+  implicit val bigDecimalFetchable: ResultSetFetchable[BigDecimal] = (rs: ResultSet) => BigDecimal(rs.getBigDecimal(1))
 }
 
 
