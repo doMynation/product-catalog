@@ -203,7 +203,6 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         """
 
       val totalCount = DatabaseHelper.fetchColumn[Int](countSql, params)(conn)
-
       val fetchSql =
         s"""
               SELECT
