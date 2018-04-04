@@ -2,16 +2,20 @@ package sales.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
+
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import play.api.Logger
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Address, AddressType, Customer}
 import shared.PhoneNumber
+
 import scala.concurrent.Future
 
 final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
 
   def get(id: Long): Future[Option[Customer]] = Future {
+    Logger.debug("getting customer")
     db.withConnection { conn =>
       val sql =
         """

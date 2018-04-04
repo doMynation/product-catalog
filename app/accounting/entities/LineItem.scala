@@ -1,6 +1,5 @@
 package accounting.entities
 
-import inventory.entities.ProductAttribute
 import play.api.libs.json.{Json, Writes}
 
 object LineItem {

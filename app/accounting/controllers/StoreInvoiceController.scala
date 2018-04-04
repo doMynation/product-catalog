@@ -2,7 +2,8 @@ package accounting.controllers
 
 import java.util.UUID
 import javax.inject._
-import accounting.entities.{Invoice, InvoiceInclude}
+
+import accounting.entities.{Invoice, LineItem, LineItems}
 import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
 import cats.implicits._
@@ -14,7 +15,8 @@ import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.repositories.CustomerRepository
-import shared.InvoiceId
+import shared.{Includable, InvoiceId}
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(
@@ -27,12 +29,12 @@ class StoreInvoiceController @Inject()(
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
-    val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
+    val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet
     val chosenLang = lang.getOrElse("en")
 
     val data = for {
       invoice <- OptionT(invoiceRepository.get(InvoiceId(invoiceId), storeId))
-      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
+      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSet))
     } yield (invoice, includes)
 
     data map { tuple =>
@@ -46,13 +48,13 @@ class StoreInvoiceController @Inject()(
   }
 
   def getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
+    val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet
     val chosenLang = lang.getOrElse("en")
-    val includeSeq: Seq[String] = include.fold(Seq[String]())(_.split(","))
     val invoiceUUID = UUID.fromString(uuid)
 
     val data = for {
       invoice <- OptionT(invoiceRepository.get(invoiceUUID, storeId))
-      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSeq))
+      includes <- OptionT.liftF(handleIncludes(invoice, chosenLang, includeSet))
     } yield (invoice, includes)
 
     data map { tuple =>
@@ -80,41 +82,29 @@ class StoreInvoiceController @Inject()(
     invoiceRepository.search(sr, Seq()).map { searchResult =>
       Ok(Json.toJson(searchResult))
     } recover {
-      case t: Throwable => {
-        Logger.info(t.toString)
+      case t: Throwable =>
+        Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
-      }
     }
   }
 
-  def handleIncludes(invoice: Invoice, lang: String, codes: Seq[String]): Future[InvoiceInclude] = {
-    codes.foldLeft(Future(InvoiceInclude())) { (acc, code) =>
-      code match {
-        case "taxes" => for {
-          inc <- acc
-          invoiceTaxes <- invoiceRepository.getTaxes(InvoiceId(invoice.id))
-        } yield inc.copy(taxes = Some(invoiceTaxes))
-        case "customer" => for {
-          inc <- acc
-          customer <- customerRepository.get(invoice.customerId)
-        } yield inc.copy(customer = customer)
-        case "lineItems" => {
-          // Get the line items
-          for {
-            inc <- acc
-            lineItems <- invoiceRepository.getLineItems(InvoiceId(invoice.id))
-          } yield {
-            // Get all products
-            val lineItemsWithProducts = lineItems.map { li =>
-              li.copy(product = li.productId.flatMap(productId => productRepository.get(productId, lang)))
-            }
+  private def handleIncludes(invoice: Invoice, lang: String, include: Set[String]): Future[Map[String, Includable]] = {
+    val futures: Seq[Future[Option[(String, Includable)]]] = (include collect {
+      case "customer" => customerRepository.get(invoice.customerId).map(_.map(("customer", _)))
+      case "taxes" => invoiceRepository.getTaxes(InvoiceId(invoice.id)).map(taxes => Some(("taxes", taxes)))
+      case "lineItems" =>
+        // Get the line items
+        val lineItemsF: Future[Seq[LineItem]] = invoiceRepository.getLineItems(InvoiceId(invoice.id)).map(_.map { li =>
+          // Get each line item's corresponding product (if any)
+          li.copy(product = li.productId.flatMap(productRepository.get(_, lang)))
+        })
 
-            // Get the product details of each line item
-            inc.copy(lineItems = Some(lineItemsWithProducts))
-          }
-        }
-        case _ => acc
-      }
-    }
+        lineItemsF.map(lineItems =>
+          Some(("lineItems", LineItems(lineItems)))
+        )
+    }).toSeq
+
+    // Execute all futures concurrently, and create a map out of the result
+    Future.sequence(futures).map(_.flatten.toMap)
   }
 }

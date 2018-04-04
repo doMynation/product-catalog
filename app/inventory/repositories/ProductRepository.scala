@@ -7,10 +7,9 @@ import infrastructure.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest}
 import play.api.db.Database
-import scala.collection.immutable.SortedSet
-import scala.collection.immutable.Queue
+import scala.collection.immutable.{Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 @Singleton
 final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -79,7 +78,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString)) { rs =>
       val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product ${ruleProductId} not found"))
+      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product $ruleProductId not found"))
     }(conn)
   }
 
@@ -92,7 +91,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, params) { rs =>
       val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product ${ruleProductId} not found"))
+      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product $ruleProductId not found"))
     }(conn)
   }
 
@@ -303,7 +302,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         "longDescription" -> "p.long_description`",
       )
 
-      val sortField = sr.sortField.flatMap(allowedSortFields.get(_)).getOrElse("sku")
+      val sortField = sr.sortField.flatMap(allowedSortFields.get).getOrElse("sku")
 
       val sql =
         s"""

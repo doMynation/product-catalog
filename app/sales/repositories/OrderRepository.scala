@@ -15,17 +15,54 @@ import scala.concurrent.Future
 
 final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
 
-  def get(id: OrderId): Future[Option[Order]] = Future {
+  def get(orderId: OrderId): Future[Option[Order]] = Future {
     db.withConnection { conn =>
       val sql =
         """
-         SELECT o.*, c.*
-         FROM s_orders o
-         JOIN customers c ON c.id = o.customer_id
-         WHERE o.id = @orderId
+        SELECT
+          o.id,
+          i.id AS invoiceId,
+          i.status AS invoiceStatus,
+          oa.value AS modelSku,
+          u.full_name AS authorName,
+          o.*,
+          c.*
+        FROM s_orders o
+          JOIN customers c ON c.id = o.customer_id
+          JOIN users u ON u.id = o.user_id
+          LEFT JOIN s_order_attributes oa ON oa.order_id = o.id AND oa.name = "model_id"
+          LEFT JOIN s_invoices i ON i.id = o.invoice_id
+          WHERE o.id = @orderId
       """
       val params = Map(
-        "orderId" -> id.toString
+        "orderId" -> orderId.toString
+      )
+
+      DatabaseHelper.fetchOne[Order](sql, params)(hydrateOrder)(conn)
+    }
+  }
+
+  def get(orderId: UUID): Future[Option[Order]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          o.id,
+          i.id AS invoiceId,
+          i.status AS invoiceStatus,
+          oa.value AS modelSku,
+          u.full_name AS authorName,
+          o.*,
+          c.*
+        FROM s_orders o
+          JOIN customers c ON c.id = o.customer_id
+          JOIN users u ON u.id = o.user_id
+          LEFT JOIN s_order_attributes oa ON oa.order_id = o.id AND oa.name = "model_id"
+          LEFT JOIN s_invoices i ON i.id = o.invoice_id
+          WHERE o.url_id = @orderId
+        """
+      val params = Map(
+        "orderId" -> orderId.toString
       )
 
       DatabaseHelper.fetchOne[Order](sql, params)(hydrateOrder)(conn)
@@ -79,6 +116,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         params = params + ("statusId" -> statusId.toString)
       })
 
+      // `progress` (rms-specific) filter
       nonEmptyFilters.get("progress").map {
         case "cancelled" =>
           wheres += "o.status = @statusId"

@@ -82,7 +82,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
-  def getTaxes(invoiceId: InvoiceId): Future[Seq[InvoiceTax]] = Future {
+  def getTaxes(invoiceId: InvoiceId): Future[InvoiceTaxes] = Future {
     db.withConnection { conn =>
       val sql =
         """
@@ -99,9 +99,11 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
           WHERE it.invoice_id = @invoiceId;
         """
 
-      DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
-        InvoiceTax(hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
+      val taxes = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
+        (hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
+
+      InvoiceTaxes(taxes)
     }
   }
 
