@@ -2,7 +2,7 @@ package shared
 
 import accounting.entities.InvoiceTaxes
 import play.api.libs.json.{Json, Writes}
-import sales.entities.Customer
+import sales.entities.{Customer, ExpeditionDetails}
 
 trait Includable {}
 
@@ -12,6 +12,7 @@ object Includable {
       case a: Customer => Json.toJson(a)
       case b: InvoiceTaxes => Json.toJson(b)
       case c: LineItems => Json.toJson(c)
+      case d: ExpeditionDetails => Json.toJson(d)
     }
   }
 }

@@ -4,12 +4,14 @@ import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
+
 import accounting.entities.InvoiceStatus
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
-import sales.entities.{Order, OrderDepartment, OrderStatus, OrderType}
+import sales.entities._
 import shared.{LineItem, LineItemType, OrderId}
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -66,6 +68,42 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       )
 
       DatabaseHelper.fetchOne[Order](sql, params)(hydrateOrder)(conn)
+    }
+  }
+
+  def getExpeditionDetails(orderId: OrderId): Future[Option[ExpeditionDetails]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          em.id,
+          em.code,
+          TRIM(CONCAT(oa.civic_number, " ", oa.street_name)) AS addressLine1,
+          oa.unity AS addressLine2,
+          c.name AS countryName,
+          c.iso_code_2 AS countryCode,
+          p.name AS stateName,
+          oa.postal_code AS zipCode
+        FROM s_orders AS o
+          JOIN expedition_methods em ON em.id = o.expedition_method_id
+          LEFT JOIN s_order_expedition_address oa ON oa.order_id = o.id
+          LEFT JOIN countries c ON c.id = oa.country_id
+          LEFT JOIN provinces p ON p.id = oa.province_id
+        WHERE o.id = @orderId;
+        """
+
+      val expeditionDetails = DatabaseHelper.fetchOne[ExpeditionDetails](sql, Map("orderId" -> orderId.toString))(hydrateExpeditionDetails)(conn)
+
+      expeditionDetails.map { details =>
+        val attributesSql = "SELECT attribute_code, attribute_value FROM s_order_expedition_attributes AS oea WHERE order_id = @orderId"
+
+        val attributes = DatabaseHelper.fetchMany[(String, String)](attributesSql, Map("orderId" -> orderId.toString)) { rs =>
+          (rs.getString("attribute_code"), rs.getString("attribute_value"))
+        }(conn).toMap
+
+
+        details.copy(metadata = attributes)
+      }
     }
   }
 
@@ -219,7 +257,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       val sql = """SELECT * FROM s_order_products WHERE order_id = @orderId"""
 
       val lineItems = DatabaseHelper.fetchMany(sql, Map("orderId" -> orderId.toString))(hydrateLineItem)(conn)
-      val lineItemAttributeOverrides =  getLineItemsAttributeOverrides(orderId)
+      val lineItemAttributeOverrides = getLineItemsAttributeOverrides(orderId)
 
       lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
     }
@@ -256,6 +294,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       "customerName" -> rs.getString("c.full_name"),
       "authorName" -> rs.getString("authorName"),
       "cancelReason" -> DatabaseHelper.getNullable[String]("cancel_note", rs).getOrElse(""),
+      "expeditedAt" -> DatabaseHelper.getNullable[String]("expedition_expedited_date", rs).getOrElse("")
     ) ++ invoiceId ++ invoiceStatus ++ modelSku
 
     Order(
@@ -288,6 +327,13 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       metadata = Map(
         "productName" -> rs.getString("product_label")
       )
+    )
+  }
+
+  private def hydrateExpeditionDetails(rs: ResultSet): ExpeditionDetails = {
+    ExpeditionDetails(
+      rs.getLong("em.id"),
+      rs.getString("em.code")
     )
   }
 }

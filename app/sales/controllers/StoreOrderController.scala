@@ -99,6 +99,7 @@ class StoreOrderController @Inject()(
         lineItemsF.map(lineItems =>
           Some(("lineItems", LineItems(lineItems)))
         )
+      case "expeditionDetails" => orderRepository.getExpeditionDetails(OrderId(order.id)).map(_.map(("expeditionDetails", _)))
     }).toSeq
 
     Future.sequence(futures).map(_.flatten.toMap)
