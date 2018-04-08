@@ -1,7 +1,6 @@
-package accounting.entities
+package shared
 
 import play.api.libs.json.{JsArray, JsValue, Json, Writes}
-import shared.Includable
 
 object LineItems {
   implicit val lineItemsWrites: Writes[LineItems] = new Writes[LineItems] {

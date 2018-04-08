@@ -3,7 +3,7 @@ package accounting.controllers
 import java.util.UUID
 import javax.inject._
 
-import accounting.entities.{Invoice, LineItem, LineItems}
+import accounting.entities.Invoice
 import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
 import cats.implicits._
@@ -15,7 +15,7 @@ import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.repositories.CustomerRepository
-import shared.{Includable, InvoiceId}
+import shared.{Includable, InvoiceId, LineItem, LineItems}
 
 import scala.concurrent.{ExecutionContext, Future}
 

@@ -9,7 +9,7 @@ import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Order, OrderDepartment, OrderStatus, OrderType}
-import shared.OrderId
+import shared.{LineItem, LineItemType, OrderId}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -214,6 +214,33 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     }
   }
 
+  def getLineItems(orderId: OrderId): Future[Seq[LineItem]] = Future {
+    db.withConnection { conn =>
+      val sql = """SELECT * FROM s_order_products WHERE order_id = @orderId"""
+
+      val lineItems = DatabaseHelper.fetchMany(sql, Map("orderId" -> orderId.toString))(hydrateLineItem)(conn)
+      val lineItemAttributeOverrides =  getLineItemsAttributeOverrides(orderId)
+
+      lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
+    }
+  }
+
+  private def getLineItemsAttributeOverrides(orderId: OrderId): Map[Long, Seq[(String, String)]] = db.withConnection { conn =>
+    val sql =
+      """
+          SELECT *
+          FROM s_order_product_attributes AS opa
+          JOIN s_order_products op ON op.id = opa.product_record_id
+          WHERE op.order_id = @orderId
+        """
+
+    val attributesData: Seq[(Long, String, String)] = DatabaseHelper.fetchMany(sql, Map("orderId" -> orderId.toString)) { rs =>
+      (rs.getLong("product_record_id"), rs.getString("attribute_code"), rs.getString("attribute_value"))
+    }(conn)
+
+    attributesData.groupBy(_._1).mapValues(_.map(tuple => (tuple._2, tuple._3)))
+  }
+
   private def hydrateOrder(rs: ResultSet): Order = {
     val status = OrderStatus.fromId(rs.getInt("o.status")).getOrElse(OrderStatus.NEW)
     val orderType = OrderType.fromId(rs.getInt("o.type_id")).getOrElse(OrderType.PARTS)
@@ -228,6 +255,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       "note" -> rs.getString("o.notes"),
       "customerName" -> rs.getString("c.full_name"),
       "authorName" -> rs.getString("authorName"),
+      "cancelReason" -> DatabaseHelper.getNullable[String]("cancel_note", rs).getOrElse(""),
     ) ++ invoiceId ++ invoiceStatus ++ modelSku
 
     Order(
@@ -244,6 +272,22 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       department = department,
       orderType = orderType,
       status = status
+    )
+  }
+
+  private def hydrateLineItem(rs: ResultSet): LineItem = {
+    val productId = rs.getLong("product_id")
+
+    LineItem(
+      rs.getLong("id"),
+      if (productId == 0) None else Some(productId),
+      rs.getInt("quantity"),
+      BigDecimal(rs.getBigDecimal("retail_price")),
+      BigDecimal(rs.getBigDecimal("sale_price")),
+      LineItemType.fromId(rs.getInt("status")).getOrElse(LineItemType.NORMAL),
+      metadata = Map(
+        "productName" -> rs.getString("product_label")
+      )
     )
   }
 }

@@ -35,6 +35,26 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     product.map(handleInclusions(_, lang, include))
   }
 
+  def getAttributeValue(valueId: Long, lang: String): Option[AttributeValue] = db.withConnection { conn =>
+    val sql =
+      s"""
+         SELECT
+           v.*,
+          COALESCE(t.label, dt.label) AS name,
+          COALESCE(t.short_description, dt.short_description) AS short_description,
+          COALESCE(t.long_description, dt.long_description) AS long_description
+         FROM inv_values v
+         JOIN translations dt ON dt.description_id = v.description_id AND dt.is_default = 1
+         LEFT JOIN translations t ON t.description_id = v.description_id AND t.lang_id = @langId
+         WHERE v.id = @valueId
+       """
+
+    DatabaseHelper.fetchOne(sql, Map(
+      "langId" -> getLangId(lang).toString,
+      "valueId" -> valueId.toString
+    ))(hydrateAttributeValue)(conn)
+  }
+
   def getAttributeValues(attributeId: Long, lang: String): Seq[AttributeValue] = db.withConnection { conn =>
     val sql =
       s"""
@@ -334,7 +354,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     })
   }
 
-  private def getProductAttributes(productId: Long, lang: String): Seq[ProductAttribute] = db.withConnection { conn =>
+  private def getProductAttributes(productId: Long, lang: String): Set[ProductAttribute] = db.withConnection { conn =>
     val sql =
       s"""
         SELECT
@@ -361,7 +381,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     DatabaseHelper.fetchMany(sql, Map(
       "langId" -> getLangId(lang).toString,
       "productId" -> productId.toString
-    ))(hydrateProductAttribute)(conn)
+    ))(hydrateProductAttribute)(conn).toSet
   }
 
   private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
@@ -510,5 +530,30 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       quantity = rs.getInt("quantity"),
       maxAllowedQuantity = rs.getInt("max_quantity")
     )
+  }
+
+  def applyProductAttributeOverrides(product: Product, attributeOverrides: Seq[(String, String)], lang: String): Product = {
+    val overridenAttributes: Seq[(ProductAttribute, String)] = attributeOverrides.flatMap(tuple => product.getAttribute(tuple._1) match {
+      case Some(productAttribute) => Some(productAttribute, tuple._2)
+      case _ => None
+    })
+
+    val productWithOverridenAttributes = overridenAttributes.foldLeft(product) {
+      (product, tuple) =>
+        (tuple._1, tuple._2, tuple._1.attribute.inputType) match {
+          case (productAttribute, newValue, "select") =>
+            // Get the corresponding value
+            getAttributeValue(newValue.toLong, lang).map { attributeValue =>
+              product.replaceAttribute(productAttribute, productAttribute.copy(
+                value = attributeValue.description.name,
+                valueId = Some(attributeValue.id),
+                valueSku = Some(attributeValue.sku)
+              ))
+            } getOrElse product
+          case (productAttribute, newValue, _) => product.replaceAttribute(productAttribute, productAttribute.copy(value = newValue))
+        }
+    }
+
+    productWithOverridenAttributes
   }
 }

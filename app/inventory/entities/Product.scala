@@ -32,7 +32,7 @@ case class Product(
                     price: Double,
                     costPrice: Double,
                     tags: Seq[String] = List(),
-                    attributes: Seq[ProductAttribute] = List(),
+                    attributes: Set[ProductAttribute] = Set(),
                     children: Seq[ProductChild] = List(),
                     rules: Seq[ProductRule] = List(),
                     createdAt: LocalDateTime = LocalDateTime.now,
@@ -41,4 +41,10 @@ case class Product(
                     isCustom: Boolean,
                     metadata: Map[String, String] = Map()
                   ) extends TimestampEntity {
+
+  def getAttribute(id: Long): Option[ProductAttribute] = attributes.find(_.attribute.id == id)
+
+  def getAttribute(code: String): Option[ProductAttribute] = attributes.find(_.attribute.code == code)
+
+  def replaceAttribute(a: ProductAttribute, b: ProductAttribute) = copy(attributes = attributes - a + b)
 }

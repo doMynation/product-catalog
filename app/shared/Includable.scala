@@ -1,6 +1,6 @@
 package shared
 
-import accounting.entities.{InvoiceTaxes, LineItems}
+import accounting.entities.InvoiceTaxes
 import play.api.libs.json.{Json, Writes}
 import sales.entities.Customer
 

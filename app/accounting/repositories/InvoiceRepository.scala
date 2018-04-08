@@ -8,7 +8,7 @@ import accounting.entities._
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
-import shared.InvoiceId
+import shared.{InvoiceId, LineItem, LineItemType}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -112,13 +112,13 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       val sql = """SELECT * FROM s_invoice_products WHERE invoice_id = @invoiceId"""
 
       val lineItems = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
-      val lineItemAttributeOverrides = getLineItemConfigurations(invoiceId)
+      val lineItemAttributeOverrides = getLineItemsAttributeOverrides(invoiceId)
 
-      lineItems.map(li => li.copy(configurations = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
+      lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
     }
   }
 
-  private def getLineItemConfigurations(invoiceId: InvoiceId): Map[Long, Seq[(String, String)]] = db.withConnection { conn =>
+  private def getLineItemsAttributeOverrides(invoiceId: InvoiceId): Map[Long, Seq[(String, String)]] = db.withConnection { conn =>
     val sql =
       """
           SELECT *

@@ -6,7 +6,7 @@ import javax.inject._
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
-import inventory.repositories.ProductRepository
+import inventory.repositories.{ProductInclusions, ProductRepository}
 import inventory.util.SearchRequest
 import play.api.Logger
 import play.api.db.Database
@@ -14,7 +14,7 @@ import play.api.libs.json.{JsObject, JsString, Json}
 import play.api.mvc._
 import sales.entities.Order
 import sales.repositories.{CustomerRepository, OrderRepository}
-import shared.{Includable, OrderId}
+import shared.{Includable, LineItem, LineItems, OrderId}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -58,10 +58,10 @@ class StoreOrderController @Inject()(
       include <- OptionT.liftF(handleIncludes(order, chosenLang, includeSet))
     } yield (order, include)
 
-    data map { order =>
+    data map { tuple =>
       Ok(JsObject(Seq(
-        "order" -> Json.toJson(order),
-        "includes" -> JsString("")
+        "order" -> Json.toJson(tuple._1),
+        "includes" -> Json.toJson(tuple._2)
       )))
     } getOrElse {
       NotFound(s"Order $uuid not found")
@@ -84,6 +84,21 @@ class StoreOrderController @Inject()(
   private def handleIncludes(order: Order, lang: String, include: Set[String]): Future[Map[String, Includable]] = {
     val futures = (include collect {
       case "customer" => customerRepository.get(order.customerId).map(_.map(("customer", _)))
+      case "lineItems" =>
+        // Get the line items
+        val lineItemsF: Future[Seq[LineItem]] = orderRepository.getLineItems(OrderId(order.id)).map(_.map { li =>
+          // Get each line item's corresponding product (if any)
+          val overridenProduct = for {
+            productId <- li.productId
+            product <- productRepository.get(productId, lang, List(ProductInclusions.ATTRIBUTES))
+          } yield productRepository.applyProductAttributeOverrides(product, li.attributeOverrides, lang)
+
+          li.copy(product = overridenProduct)
+        })
+
+        lineItemsF.map(lineItems =>
+          Some(("lineItems", LineItems(lineItems)))
+        )
     }).toSeq
 
     Future.sequence(futures).map(_.flatten.toMap)
