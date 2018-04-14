@@ -1,0 +1,5 @@
+# Make the program executable
+chmod +x ../bin/solariusAPI
+
+# Run the background in background on port 8999
+nohup ./../bin/solariusAPI -Dhttp.port=8999 &

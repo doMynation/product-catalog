@@ -1,8 +1,8 @@
-name := "testscala26"
+name := "solariusAPI"
 
-version := "1.0"
+version := "1.1.0"
 
-lazy val `testscala26` = (project in file(".")).enablePlugins(PlayScala)
+lazy val `solariusAPI` = (project in file(".")).enablePlugins(PlayScala)
 
 resolvers += "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
 resolvers += "Akka Snapshot Repository" at "http://repo.akka.io/snapshots/"
@@ -17,3 +17,8 @@ libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "3.1.1
 libraryDependencies += "org.typelevel" %% "cats-core" % "1.0.1"
 
 unmanagedResourceDirectories in Test <+= baseDirectory(_ / "target/web/public/test")
+
+mappings in Universal ++=
+  (baseDirectory.value / "scripts" * "*" get) map
+    (x => x -> ("scripts/" + x.getName))
+
