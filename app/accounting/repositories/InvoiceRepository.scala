@@ -109,7 +109,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
 
   def getLineItems(invoiceId: InvoiceId): Future[Seq[LineItem]] = Future {
     db.withConnection { conn =>
-      val sql = """SELECT * FROM s_invoice_products WHERE invoice_id = @invoiceId"""
+      val sql = "SELECT * FROM s_invoice_products WHERE invoice_id = @invoiceId"
 
       val lineItems = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
       val lineItemAttributeOverrides = getLineItemsAttributeOverrides(invoiceId)

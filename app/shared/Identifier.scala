@@ -19,3 +19,5 @@ case class StoreApiKey(value: String) extends Identifier(value)
 case class OrderId(value: Long) extends Identifier(value)
 
 case class OrderName(value: String) extends Identifier(value)
+
+case class QuoteId(value: Long) extends Identifier(value)

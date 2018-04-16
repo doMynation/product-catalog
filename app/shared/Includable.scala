@@ -13,6 +13,7 @@ object Includable {
       case b: InvoiceTaxes => Json.toJson(b)
       case c: LineItems => Json.toJson(c)
       case d: ExpeditionDetails => Json.toJson(d)
+      case e: FilesCollection => Json.toJson(e)
     }
   }
 }
