@@ -4,11 +4,13 @@ import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
+
 import accounting.entities._
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
-import shared.{InvoiceId, LineItem, LineItemType}
+import shared.{InvoiceId, ApplicableTaxes, LineItem, LineItemType}
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -82,7 +84,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
-  def getTaxes(invoiceId: InvoiceId): Future[InvoiceTaxes] = Future {
+  def getTaxes(invoiceId: InvoiceId): Future[ApplicableTaxes] = Future {
     db.withConnection { conn =>
       val sql =
         """
@@ -103,7 +105,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         (hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
 
-      InvoiceTaxes(taxes)
+      ApplicableTaxes(taxes)
     }
   }
 

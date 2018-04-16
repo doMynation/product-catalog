@@ -4,12 +4,14 @@ import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
+
 import accounting.entities._
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Quote, QuoteStatus}
-import shared.{File, LineItem, LineItemType, QuoteId}
+import shared._
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -20,7 +22,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       val sql =
         """
          SELECT q.*, c.*
-         FROM s_quote q
+         FROM s_quotes q
          JOIN customers c ON c.id = q.customer_id
          WHERE q.id = @quoteId
       """
@@ -93,7 +95,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     }
   }
 
-  def getTaxes(quoteId: QuoteId): Future[InvoiceTaxes] = Future {
+  def getTaxes(quoteId: QuoteId): Future[ApplicableTaxes] = Future {
     db.withConnection { conn =>
       val sql =
         """
@@ -114,7 +116,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         (hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
 
-      InvoiceTaxes(taxes)
+      ApplicableTaxes(taxes)
     }
   }
 
@@ -243,7 +245,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       total = BigDecimal(rs.getBigDecimal("total")),
       currency = currency,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullableish[LocalDateTime]("modification_date", rs),
+      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
       status = quoteStatus,
       metadata = metadata
     )
