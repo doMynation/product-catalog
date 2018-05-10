@@ -78,10 +78,12 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.search(sr, chosenLang, inc).map(products =>
-      Ok(Json.toJson(products))
-    ) recover {
-      case t: Throwable => ServiceUnavailable("Unexpected error")
+    productRepository.search(sr, chosenLang, inc).map { searchResult =>
+      Ok(Json.toJson(searchResult))
+    } recover {
+      case t: Throwable =>
+        println(t)
+        ServiceUnavailable("Unexpected error")
     }
   }
 

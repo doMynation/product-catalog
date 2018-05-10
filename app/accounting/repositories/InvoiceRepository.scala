@@ -9,7 +9,7 @@ import accounting.entities._
 import infrastructure.DatabaseExecutionContext
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
-import shared.{InvoiceId, ApplicableTaxes, LineItem, LineItemType}
+import shared._
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future

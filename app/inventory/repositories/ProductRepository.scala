@@ -2,11 +2,14 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
+
 import com.google.inject.{Inject, Singleton}
 import infrastructure.DatabaseExecutionContext
 import inventory.entities._
-import inventory.util.{DatabaseHelper, SearchRequest}
+import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.Database
+import play.api.i18n.Lang
+
 import scala.collection.immutable.{Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
@@ -260,7 +263,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     }(conn)
   }
 
-  def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[Seq[Product]] = Future {
+  def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[SearchResult[Product]] = Future {
     db.withConnection(conn => {
       val wheres = new ListBuffer[String]()
       val havings = new ListBuffer[String]()
@@ -324,9 +327,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
       val sortField = sr.sortField.flatMap(allowedSortFields.get).getOrElse("sku")
 
-      val sql =
+      val fetchSql =
         s"""
               SELECT
+                SQL_CALC_FOUND_ROWS
                 p.*,
                 $priceColumn AS price,
                 c.*,
@@ -349,8 +353,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
 
-      val products = DatabaseHelper.fetchMany(sql, params)(hydrateProduct)(conn)
-      products.map(handleInclusions(_, lang, include))
+      val products = DatabaseHelper.fetchMany(fetchSql, params)(hydrateProduct)(conn).map(handleInclusions(_, lang, include))
+      val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
+
+      SearchResult(products, totalCount.get)
     })
   }
 
@@ -501,6 +507,34 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
       category.copy(parents = parents)
     }
+  }
+
+  def getProductCategories(lang: String): Seq[(ProductCategory, Int)] = db.withConnection { conn =>
+    val sql =
+      """
+        SELECT
+          c.*,
+          COALESCE(t.label, dt.label) AS `c.name`,
+          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `c.long_description`,
+          COUNT(parent.id) AS depth
+        FROM inv_product_categories c
+          JOIN inv_product_categories parent ON c.left_id BETWEEN parent.left_id AND parent.right_id
+          JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
+          LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
+        GROUP BY c.id
+        ORDER BY c.left_id
+      """
+    val params = Map(
+      "langId" -> getLangId(lang).toString
+    )
+
+    val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
+      val category = hydrateProductCategory(rs)
+      (category, rs.getInt("depth"))
+    })(conn)
+
+    categories
   }
 
   private def getCategoryParents(categoryId: Long): SortedSet[String] = db.withConnection { conn =>

@@ -29,7 +29,7 @@ object DatabaseHelper {
     * @param extractor  An extractor for type `T`
     * @return A single value of type `T`
     */
-  def fetchColumn[T](sql: String, params: Map[String, String])(connection: Connection)(implicit extractor: ResultSetFetchable[T]): Option[T] = {
+  def fetchColumn[T](sql: String, params: Map[String, String] = Map())(connection: Connection)(implicit extractor: ResultSetFetchable[T]): Option[T] = {
     val rs = executeQuery(sql, params)(connection)
 
     if (rs.next) Some(extractor.get(rs))

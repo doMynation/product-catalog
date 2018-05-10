@@ -1,6 +1,6 @@
 name := "solariusAPI"
 
-version := "1.1.0"
+version := "1.1.2"
 
 lazy val `solariusAPI` = (project in file(".")).enablePlugins(PlayScala)
 

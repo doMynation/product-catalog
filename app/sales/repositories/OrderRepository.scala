@@ -316,13 +316,15 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
 
   private def hydrateLineItem(rs: ResultSet): LineItem = {
     val productId = rs.getLong("product_id")
+    val retailPrice = DatabaseHelper.getNullable[BigDecimal]("retail_price", rs).getOrElse(BigDecimal(0.00))
+    val salePrice = DatabaseHelper.getNullable[BigDecimal]("sale_price", rs).getOrElse(BigDecimal(0.00))
 
     LineItem(
       rs.getLong("id"),
       if (productId == 0) None else Some(productId),
       rs.getInt("quantity"),
-      BigDecimal(rs.getBigDecimal("retail_price")),
-      BigDecimal(rs.getBigDecimal("sale_price")),
+      retailPrice,
+      salePrice,
       LineItemType.fromId(rs.getInt("status")).getOrElse(LineItemType.NORMAL),
       metadata = Map(
         "productName" -> rs.getString("product_label")

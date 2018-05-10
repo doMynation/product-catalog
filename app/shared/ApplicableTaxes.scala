@@ -1,6 +1,5 @@
 package shared
 
-import accounting.entities.TaxComponent
 import play.api.libs.json._
 
 object ApplicableTaxes {

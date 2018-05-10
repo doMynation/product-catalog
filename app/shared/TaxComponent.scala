@@ -1,4 +1,4 @@
-package accounting.entities
+package shared
 
 import play.api.libs.json.{Json, Writes}
 

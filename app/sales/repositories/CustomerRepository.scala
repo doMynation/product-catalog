@@ -13,7 +13,6 @@ import scala.concurrent.Future
 final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
 
   def get(id: Long): Future[Option[Customer]] = Future {
-    Logger.debug("getting customer")
     db.withConnection { conn =>
       val sql =
         """
