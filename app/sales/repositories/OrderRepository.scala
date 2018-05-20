@@ -130,6 +130,12 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         params = params + ("storeId" -> value)
       })
 
+      // `customerId` filter
+      nonEmptyFilters.get("customerId").foreach(value => {
+        wheres += "c.id = @customerId"
+        params = params + ("customerId" -> value)
+      })
+
       // `customerName` filter
       nonEmptyFilters.get("customerName").foreach(value => {
         wheres += "c.full_name LIKE @customerName"

@@ -32,6 +32,7 @@ GET        /stores/:storeId/balance                                             
 # Orders
 GET        /stores/:storeId/orders                                                                                             sales.controllers.StoreOrderController.search(storeId: Long)
 GET        /stores/:storeId/orders/$orderId<[0-9]+>                                                                            sales.controllers.StoreOrderController.get(orderId: Long, storeId: Long, lang: Option[String], include: Option[String])
+GET        /stores/:storeId/orders/$orderId<[0-9]+>/comments                                                                   sales.controllers.StoreOrderController.getComments(orderId: Long, storeId: Long)
 GET        /stores/:storeId/orders/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>          sales.controllers.StoreOrderController.getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String])
 
 # Quotes

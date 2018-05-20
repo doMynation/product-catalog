@@ -1,5 +1,13 @@
-# Make the program executable
-chmod +x ../bin/solariusAPI
+# Find the current dir
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Run the background in background on port 8999
-nohup ./../bin/solariusAPI -Dhttp.port=8999 &
+# Navigate to application's bin dir
+BINDIR="$DIR/../bin"
+cd "$BINDIR"
+
+# Make the program executable
+chmod +x solariusapi
+
+# Run the program in background on port 8999
+nohup ./solariusapi -Dhttp.port=8999 &
+

@@ -2,6 +2,7 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
@@ -13,7 +14,9 @@ import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.entities.Order
 import sales.repositories.{CustomerRepository, OrderRepository}
-import shared.{Includable, LineItem, LineItems, OrderId}
+import shared.repositories.CommentRepository
+import shared._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreOrderController @Inject()(
@@ -22,6 +25,7 @@ class StoreOrderController @Inject()(
                                       db: Database,
                                       orderRepository: OrderRepository,
                                       customerRepository: CustomerRepository,
+                                      commentRepository: CommentRepository,
                                       productRepository: ProductRepository
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
@@ -66,6 +70,22 @@ class StoreOrderController @Inject()(
     }
   }
 
+  def getComments(orderId: Long, storeId: Long) = Action.async { req =>
+    val queryString = req.queryString ++ Map(
+      "type" -> Seq(commentRepository.TYPE_ORDER),
+      "documentId" -> Seq(orderId.toString),
+    )
+    val sr = SearchRequest.fromQueryString(queryString)
+
+    commentRepository.search(sr) map { searchResult =>
+      Ok(Json.toJson(searchResult))
+    } recover {
+      case t: Throwable =>
+        Logger.error(t.toString)
+        ServiceUnavailable("Unexpected error")
+    }
+  }
+
   def search(storeId: Long) = Action.async { req =>
     val queryString = req.queryString ++ Map("storeId" -> Seq(storeId.toString))
     val sr = SearchRequest.fromQueryString(queryString)
@@ -98,6 +118,15 @@ class StoreOrderController @Inject()(
           Some(("lineItems", LineItems(lineItems)))
         )
       case "expeditionDetails" => orderRepository.getExpeditionDetails(OrderId(order.id)).map(_.map(("expeditionDetails", _)))
+      case "comments" =>
+        // Create a search request for comments of this specific order
+        val sr = SearchRequest(
+          filters = Map("type" -> commentRepository.TYPE_ORDER, "documentId" -> order.id.toString),
+          sortField = Some("createdAt"),
+          limit = Some(100)
+        )
+
+        commentRepository.search(sr).map(searchResult => Some(("comments", Comments(searchResult.results))))
     }).toSeq
 
     Future.sequence(futures).map(_.flatten.toMap)
