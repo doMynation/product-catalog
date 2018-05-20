@@ -13,6 +13,7 @@ object Includable {
       case c: LineItems => Json.toJson(c)
       case d: ExpeditionDetails => Json.toJson(d)
       case e: FilesCollection => Json.toJson(e)
+      case f: Comments => Json.toJson(f)
     }
   }
 }
