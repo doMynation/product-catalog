@@ -2,28 +2,31 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
-
-import com.google.inject.{Inject, Singleton}
+import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.Database
-import play.api.i18n.Lang
-
 import scala.collection.immutable.{Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
-@Singleton
 final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
   // Type alias
   type Product = inventory.entities.Product
 
-  def getLangId(langCode: String): Int = langCode match {
+  private def getLangId(langCode: String): Int = langCode match {
     case "fr" => 1
     case "en" => 2
     case "es" => 3
     case _ => 1
+  }
+
+  private def getLangCode(langId: Long): String = langId match {
+    case 1 => "fr"
+    case 2 => "en"
+    case 3 => "es"
+    case _ => "fr"
   }
 
   def get(id: Long, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
@@ -83,6 +86,16 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     store map (getProductRulesByStore(productId, lang, _)) getOrElse getRules(productId, lang)
   }
 
+  def getRule(id: Long, lang: String)(implicit store: Option[Store] = None): Option[ProductRule] = {
+    store.map(getProductRuleByStore(id, lang, _)) getOrElse getProductRule(id, lang)
+  }
+
+  def getTranslations(descriptionId: Long): Seq[Translation] = db.withConnection { conn =>
+    val sql = "SELECT * FROM translations WHERE description_id = @descriptionId"
+
+    DatabaseHelper.fetchMany(sql, Map("descriptionId" -> descriptionId.toString))(hydrateTranslation)(conn)
+  }
+
   private def getRules(productId: Long, lang: String): Seq[ProductRule] = db.withConnection { conn =>
     val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
 
@@ -90,10 +103,6 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       val ruleProductId = rs.getLong("related_product_id")
       get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"$ruleProductId does not exist"))
     }(conn)
-  }
-
-  def getRule(id: Long, lang: String)(implicit store: Option[Store] = None): Option[ProductRule] = {
-    store.map(getProductRuleByStore(id, lang, _)) getOrElse getProductRule(id, lang)
   }
 
   private def getProductRule(id: Long, lang: String): Option[ProductRule] = db.withConnection { conn =>
@@ -138,18 +147,25 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
               p.*,
               p.retail_price AS price,
               c.*,
+              d.*,
               COALESCE(t.label, dt.label) AS `p.name`,
               COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
               COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
               COALESCE(tc.label, dtc.label) AS `c.name`,
               COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`
+              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+              COALESCE(td.label, dtd.label) AS `d.name`,
+              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
             FROM inv_products p
             JOIN inv_product_categories c ON c.id = p.category_id
             JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
             LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
             JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
             LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
+            LEFT JOIN inv_departments d ON d.id = p.department_id
+            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
+            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
             WHERE p.id = @productId
          """
 
@@ -166,18 +182,25 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
               p.*,
               p.retail_price AS price,
               c.*,
+              d.*,
               COALESCE(t.label, dt.label) AS `p.name`,
               COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
               COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
               COALESCE(tc.label, dtc.label) AS `c.name`,
               COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`
+              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+              COALESCE(td.label, dtd.label) AS `d.name`,
+              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
             FROM inv_products p
             JOIN inv_product_categories c ON c.id = p.category_id
             JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
             LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
             JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
             LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
+            LEFT JOIN inv_departments d ON d.id = p.department_id
+            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
+            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
             WHERE p.sku = @sku
          """
 
@@ -195,13 +218,17 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
             SELECT
               p.*,
               c.*,
+              d.*,
               COALESCE(ps.price, p.retail_price) AS price,
               COALESCE(t.label, dt.label) AS `p.name`,
               COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
               COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
               COALESCE(tc.label, dtc.label) AS `c.name`,
               COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`
+              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+              COALESCE(td.label, dtd.label) AS `d.name`,
+              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
             FROM inv_products p
             JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId
             JOIN inv_product_categories c ON c.id = p.category_id
@@ -209,6 +236,9 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
             LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
             JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
             LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
+            LEFT JOIN inv_departments d ON d.id = p.department_id
+            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
+            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
             WHERE p.id = @productId
        """
 
@@ -227,13 +257,17 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
             SELECT
               p.*,
               c.*,
+              d.*,
               COALESCE(ps.price, p.retail_price) AS price,
               COALESCE(t.label, dt.label) AS `p.name`,
               COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
               COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
               COALESCE(tc.label, dtc.label) AS `c.name`,
               COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`
+              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+              COALESCE(td.label, dtd.label) AS `d.name`,
+              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
             FROM inv_products p
             JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId
             JOIN inv_product_categories c ON c.id = p.category_id
@@ -254,13 +288,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   def getDescription(id: Long, lang: String): Option[Description] = db.withConnection { conn =>
     val sql = "SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
 
-    DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString)) { rs =>
-      Description(
-        rs.getString("label"),
-        rs.getString("short_description"),
-        rs.getString("long_description")
-      )
-    }(conn)
+    DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString))(hydrateDescription)(conn)
   }
 
   def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[SearchResult[Product]] = Future {
@@ -274,8 +302,29 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
       var priceColumn = "p.retail_price"
 
-      wheres += "p.status = 1"
+      wheres += "1 = 1"
       havings += "1 = 1"
+
+      sr.filters.get("isEnabled").foreach(value => {
+        wheres += "p.status = @isEnabled"
+        params = params + ("isEnabled" -> value)
+      })
+
+      sr.filters.get("isKit").foreach(value => {
+        wheres += "p.is_kit = @isKit"
+        params = params + ("isKit" -> value)
+      })
+
+      sr.filters.get("isCustom").foreach(value => {
+        wheres += "is_custom = @isCustom"
+        params = params + ("isCustom" -> value)
+      })
+
+      // `id` filter
+      sr.filters.get("id").foreach(value => {
+        wheres += "p.id LIKE @id"
+        params = params + ("id" -> s"%$value%")
+      })
 
       // `sku` filter
       sr.filters.get("sku").foreach(value => {
@@ -295,9 +344,16 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         params = params + ("name" -> s"%$value%")
       })
 
+      // `nameSku` filter
       sr.filters.get("nameSku").foreach(value => {
         havings += "(`p.name` LIKE @name OR sku LIKE @sku)"
         params = params + ("name" -> s"%$value%", "sku" -> s"%$value%")
+      })
+
+      // `department` filter
+      sr.filters.get("department").foreach(value => {
+        wheres += "(d.code = @department)"
+        params = params + ("department" -> value)
       })
 
       // `category` filter (e.g. "model", "model,option")
@@ -307,22 +363,29 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
           (acc, categoryName) => acc :+ s"'$categoryName'"
         }.mkString(",")
 
-        joins += s"JOIN inv_product_categories tree ON tree.code IN ($inClause) AND tree.left_id < c.left_id AND tree.right_id > c.right_id"
+        joins += s"JOIN inv_product_categories tree ON tree.code IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
       })
 
-      store.foreach(s => {
-        s.id.foreach(storeId => {
+      // When a implicit store is defined, enforce it and disallow filtering by store
+      if (store.isDefined) {
+        store.get.id.foreach(storeId => {
           joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
           params = params + ("storeId" -> storeId.toString)
           priceColumn = "IFNULL(ps.price, p.retail_price)"
         })
-      })
+      } else {
+        sr.filters.get("storeId").foreach(value => {
+          joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
+          params = params + ("storeId" -> value.toString)
+        })
+      }
 
       val allowedSortFields = Map(
         "sku" -> "sku",
         "name" -> "`p.name`",
         "shortDescription" -> "`p.short_description`",
-        "longDescription" -> "p.long_description`",
+        "longDescription" -> "`p.long_description`",
+        "isCustom" -> "p.is_custom",
       )
 
       val sortField = sr.sortField.flatMap(allowedSortFields.get).getOrElse("sku")
@@ -334,18 +397,25 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
                 p.*,
                 $priceColumn AS price,
                 c.*,
+                d.*,
                 COALESCE(t.label, dt.label) AS `p.name`,
                 COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
                 COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
                 COALESCE(tc.label, dtc.label) AS `c.name`,
                 COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-                COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`
+                COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+                COALESCE(td.label, dtd.label) AS `d.name`,
+                COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+                COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
               FROM inv_products p
               JOIN inv_product_categories c ON c.id = p.category_id
               JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
               LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
               JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
               LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
+              LEFT JOIN inv_departments d ON d.id = p.department_id
+              LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
+              LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
               ${joins.mkString(" ")}
               WHERE ${wheres.mkString(" AND ")}
               HAVING ${havings.mkString(" AND ")}
@@ -358,6 +428,26 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
       SearchResult(products, totalCount.get)
     })
+  }
+
+  def getProductStorePrices(productId: Long): Seq[ProductStorePrice] = db.withConnection { conn =>
+    val sql = "SELECT * FROM inv_product_stores WHERE product_id = @productId"
+
+    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      ProductStorePrice(rs.getLong("store_id"), DatabaseHelper.getNullable[BigDecimal]("price", rs))
+    }(conn)
+  }
+
+  def getProductAssemblyParts(productId: Long, lang: String): Seq[ProductAssemblyPart] = db.withConnection { conn =>
+    val sql = "SELECT * FROM inv_product_assemblies WHERE product_id = @productId"
+
+    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      val assemblyPartId = rs.getLong("assembly_product_id")
+
+      get(assemblyPartId, lang)
+        .map(part => ProductAssemblyPart(part, rs.getString("tag"), rs.getBoolean("is_default")))
+        .getOrElse(throw new RuntimeException(s"$assemblyPartId does not exist"))
+    }(conn)
   }
 
   private def getProductAttributes(productId: Long, lang: String): Set[ProductAttribute] = db.withConnection { conn =>
@@ -395,7 +485,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
   private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
     ProductAttribute(
-      id = Some(rs.getLong("record_id")),
+      id = rs.getLong("record_id"),
       attribute = Attribute(
         rs.getLong("attribute_id"),
         rs.getString("attribute_code"),
@@ -438,21 +528,31 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     val metadata = Map(
       "mpn" -> rs.getString("mpn"),
       "isKit" -> rs.getInt("is_kit").toString,
-      "imageUrl" -> rs.getString("image_url")
+      "imageUrl" -> rs.getString("image_url"),
+      "stickerId" -> rs.getString("sticker_template_id"),
+      "extrusionId" -> rs.getString("extrusion_template_id"),
     )
+
+    val department = DatabaseHelper.getNullable[String]("d.code", rs).map { _ =>
+      hydrateProductDepartment(rs)
+    }
 
     Product(
       Some(rs.getLong("id")),
+      rs.getLong("category_id"),
       rs.getString("sku"),
+      rs.getLong("p.description_id"),
       Description(rs.getString("p.name"), rs.getString("p.short_description"), rs.getString("p.long_description")),
       rs.getDouble("price"),
       rs.getDouble("cost_price"),
       tags = DatabaseHelper.getNullable[String]("tags", rs).fold(Seq[String]())(_.split(",")),
       category = Some(hydrateProductCategory(rs)),
+      department = department,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
       updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      metadata = metadata,
       isCustom = rs.getBoolean("is_custom"),
-      metadata = metadata
+      isEnabled = rs.getBoolean("status"),
     )
   }
 
@@ -467,6 +567,20 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       ),
       createdAt = rs.getTimestamp("c.creation_date").toLocalDateTime,
       updatedAt = DatabaseHelper.getNullable[LocalDateTime]("c.modification_date", rs)
+    )
+  }
+
+  private def hydrateProductDepartment(rs: ResultSet): ProductDepartment = {
+    ProductDepartment(
+      rs.getLong("d.id"),
+      rs.getString("d.code"),
+      Description(
+        rs.getString("d.name"),
+        rs.getString("d.short_description"),
+        rs.getString("d.long_description")
+      ),
+      createdAt = rs.getTimestamp("d.creation_date").toLocalDateTime,
+      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("d.modification_date", rs)
     )
   }
 
@@ -509,9 +623,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     }
   }
 
-  def getProductCategories(lang: String): Seq[(ProductCategory, Int)] = db.withConnection { conn =>
-    val sql =
-      """
+  def getProductCategories(lang: String): Future[Seq[(ProductCategory, Int)]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
         SELECT
           c.*,
           COALESCE(t.label, dt.label) AS `c.name`,
@@ -525,16 +640,38 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         GROUP BY c.id
         ORDER BY c.left_id
       """
-    val params = Map(
-      "langId" -> getLangId(lang).toString
-    )
+      val params = Map(
+        "langId" -> getLangId(lang).toString
+      )
 
-    val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
-      val category = hydrateProductCategory(rs)
-      (category, rs.getInt("depth"))
-    })(conn)
+      val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
+        val category = hydrateProductCategory(rs)
+        (category, rs.getInt("depth"))
+      })(conn)
 
-    categories
+      categories
+    }
+  }
+
+  def getProductDepartments(lang: String): Future[Seq[ProductDepartment]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          d.*,
+          COALESCE(t.label, dt.label) AS `d.name`,
+          COALESCE(t.short_description, dt.short_description) AS `d.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `d.long_description`
+        FROM inv_departments d
+        JOIN translations dt ON dt.description_id = d.description_id AND dt.is_default = 1
+        LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
+      """
+      val params = Map(
+        "langId" -> getLangId(lang).toString
+      )
+
+      DatabaseHelper.fetchMany(sql, params)(hydrateProductDepartment)(conn);
+    }
   }
 
   private def getCategoryParents(categoryId: Long): SortedSet[String] = db.withConnection { conn =>
@@ -550,12 +687,13 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         case ProductInclusions.ATTRIBUTES => p.copy(attributes = getProductAttributes(product.id.get, lang))
         case ProductInclusions.CHILDREN => p.copy(children = getProductChildren(product.id.get, lang))
         case ProductInclusions.RULES => p.copy(rules = getProductRules(product.id.get, lang))
+        case ProductInclusions.ASSEMBLY_PARTS => p.copy(assemblyParts = getProductAssemblyParts(product.id.get, lang))
         case _ => p
       }
     }
   }
 
-  private def hydrateProductRule(product: Product, rs: ResultSet): ProductRule = {
+  private def hydrateProductRule(product: Product, rs: ResultSet): ProductRule =
     ProductRule(
       id = rs.getLong("id"),
       product = product,
@@ -564,7 +702,21 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       quantity = rs.getInt("quantity"),
       maxAllowedQuantity = rs.getInt("max_quantity")
     )
-  }
+
+  private def hydrateTranslation(rs: ResultSet): Translation =
+    Translation(
+      id = rs.getLong("id"),
+      lang = getLangCode(rs.getLong("lang_id")),
+      description = hydrateDescription(rs),
+      isDefault = rs.getBoolean("is_default")
+    )
+
+  private def hydrateDescription(rs: ResultSet): Description =
+    Description(
+      rs.getString("label"),
+      rs.getString("short_description"),
+      rs.getString("long_description")
+    )
 
   def applyProductAttributeOverrides(product: Product, attributeOverrides: Seq[(String, String)], lang: String): Product = {
     val overridenAttributes: Seq[(ProductAttribute, String)] = attributeOverrides.flatMap(tuple => product.getAttribute(tuple._1) match {

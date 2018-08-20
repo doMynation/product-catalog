@@ -80,15 +80,20 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
   }
 
   def search(lang: Option[String], include: Option[String]) = authAction.async { req =>
+    // Restrict products searched by store to enabled ones only
+    val queryString = req.queryString ++ Map("IsEnabled" -> List("1"))
+
     implicit val store: Option[Store] = req.attrs.get(Attrs.Store)
-    val sr = SearchRequest.fromQueryString(req.queryString)
+    val sr = SearchRequest.fromQueryString(queryString)
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")
 
     productRepository.search(sr, chosenLang, inc).map { searchResult =>
       Ok(Json.toJson(searchResult))
     } recover {
-      case t: Throwable => ServiceUnavailable("Unexpected error")
+      case t: Throwable =>
+        println(t)
+        ServiceUnavailable("Unexpected error")
     }
   }
 }

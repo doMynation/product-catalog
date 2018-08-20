@@ -1,12 +1,12 @@
 package inventory.entities
 
-import play.api.libs.functional.syntax._
-import play.api.libs.json.Reads._
 import java.time.LocalDateTime
-import play.api.libs.json._
-import shared.TimestampEntity
 
-object Product {
+import inventory.dtos.ProductDTO
+import play.api.libs.json._
+import shared.{DTOMappable, TimestampEntity}
+
+object Product extends DTOMappable[Product, ProductDTO] {
   implicit lazy val productWrites: Writes[Product] = Json.writes[Product]
 
   //  implicit val productReads: Reads[Product] = (
@@ -23,11 +23,31 @@ object Product {
   //      (__ \ "attributes").read[Seq[String]] and
   //      (__ \ "children").read[Seq[ProductChild]]
   //    ) (Product.apply _)
+
+  override implicit def toDto(entity: Product): ProductDTO =
+    ProductDTO(
+      sku = entity.sku,
+      categoryId = entity.categoryId,
+      departmentId = entity.department.map(_.id),
+      price = entity.price,
+      costPrice = entity.costPrice,
+      tags = entity.tags,
+      metadata = entity.metadata,
+      isCustom = entity.isCustom,
+      isEnabled = entity.isEnabled,
+      createdAt = LocalDateTime.now,
+      attributes = entity.attributes.toList.sortBy(_.id).map(_.toDto),
+      children = entity.children.map(_.toDto),
+      rules = entity.rules.map(_.toDto),
+      assemblyParts = entity.assemblyParts.map(_.toDto),
+    )
 }
 
 case class Product(
                     id: Option[Long],
+                    categoryId: Long,
                     sku: String,
+                    descriptionId: Long,
                     description: Description,
                     price: Double,
                     costPrice: Double,
@@ -35,11 +55,14 @@ case class Product(
                     attributes: Set[ProductAttribute] = Set(),
                     children: Seq[ProductChild] = List(),
                     rules: Seq[ProductRule] = List(),
+                    assemblyParts: Seq[ProductAssemblyPart] = List(),
                     createdAt: LocalDateTime = LocalDateTime.now,
                     updatedAt: Option[LocalDateTime] = None,
                     category: Option[ProductCategory] = None,
+                    department: Option[ProductDepartment] = None,
+                    metadata: Map[String, String] = Map(),
                     isCustom: Boolean,
-                    metadata: Map[String, String] = Map()
+                    isEnabled: Boolean,
                   ) extends TimestampEntity {
 
   def getAttribute(id: Long): Option[ProductAttribute] = attributes.find(_.attribute.id == id)

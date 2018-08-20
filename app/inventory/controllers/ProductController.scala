@@ -8,11 +8,34 @@ import inventory.util.SearchRequest
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
-
 import scala.concurrent.ExecutionContext
 import cats.implicits._
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def getDepartments(lang: Option[String]) = authAction.async {
+    val chosenLang = lang.getOrElse("en")
+
+    productRepository.getProductDepartments(chosenLang).map { departments =>
+      Ok(Json.toJson(departments))
+    } recover {
+      case t: Throwable =>
+        println(t)
+        ServiceUnavailable("Unexpected error")
+    }
+  }
+
+  def getCategories(lang: Option[String]) = authAction.async {
+    val chosenLang = lang.getOrElse("en")
+
+    productRepository.getProductCategories(chosenLang).map { categories =>
+      Ok(Json.toJson(categories))
+    } recover {
+      case t: Throwable =>
+        println(t)
+        ServiceUnavailable("Unexpected error")
+    }
+  }
 
   def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction { req =>
     val ids = idsString.split(",").map(_.toInt)

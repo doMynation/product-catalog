@@ -18,5 +18,4 @@ case class Description(
                         name: String,
                         shortDescription: String,
                         longDescription: String) {
-
 }

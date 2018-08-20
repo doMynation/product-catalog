@@ -7,4 +7,5 @@ object ProductInclusions {
   val CHILDREN = "children"
   val CHILDREN_ATTRIBUTES = "children"
   val RULES = "rules"
+  val ASSEMBLY_PARTS = "assembly_parts"
 }
