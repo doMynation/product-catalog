@@ -1,7 +1,6 @@
 package inventory.controllers
 
 import javax.inject._
-
 import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
@@ -9,9 +8,27 @@ import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
 import scala.concurrent.ExecutionContext
-import cats.implicits._
+import play.api.Logger
 
 class ProductController @Inject()(authAction: AuthenticatedAction, cc: ControllerComponents, db: Database, productRepository: ProductRepository)(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def getAttributes(lang: Option[String]) = authAction.async {
+    val chosenLang = lang.getOrElse("en")
+
+    productRepository.getAttributes(chosenLang).map { attributes =>
+      val data = attributes.map { attribute =>
+        val values = if (attribute.inputType == "select") productRepository.getAttributeValues(attribute.id, chosenLang) else List()
+
+        attribute.copy(values = values)
+      }
+
+      Ok(Json.toJson(data))
+    } recover {
+      case t: Throwable =>
+        Logger.error(t.toString)
+        ServiceUnavailable("Unexpected error")
+    }
+  }
 
   def getDepartments(lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
@@ -20,7 +37,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
       Ok(Json.toJson(departments))
     } recover {
       case t: Throwable =>
-        println(t)
+        Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }
@@ -32,7 +49,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
       Ok(Json.toJson(categories))
     } recover {
       case t: Throwable =>
-        println(t)
+        Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }
@@ -105,7 +122,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
       Ok(Json.toJson(searchResult))
     } recover {
       case t: Throwable =>
-        println(t)
+        Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }

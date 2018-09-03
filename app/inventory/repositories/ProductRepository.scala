@@ -450,7 +450,31 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     }(conn)
   }
 
-  private def getProductAttributes(productId: Long, lang: String): Set[ProductAttribute] = db.withConnection { conn =>
+  def getAttribute(attributeId: Long, lang: String): Option[Attribute] = db.withConnection { conn =>
+    val sql =
+      s"""
+        SELECT
+         	a.*,
+         	COALESCE(t.label, dt.label) AS label,
+         	COALESCE(t.short_description, dt.short_description) AS short_description,
+         	COALESCE(t.long_description, dt.long_description) AS long_description,
+          data_types.code AS data_type,
+          input_types.code AS input_type
+         FROM inv_attributes a
+         	JOIN data_types ON data_types.id = a.data_type_id
+         	JOIN input_types ON input_types.id = a.input_type_id
+         	JOIN translations dt ON dt.description_id = a.description_id AND dt.is_default = 1
+         	LEFT JOIN translations t ON t.description_id = a.description_id AND t.lang_id = @langId
+         WHERE a.id = @attributeId
+       """
+
+    DatabaseHelper.fetchOne(sql, Map(
+      "langId" -> getLangId(lang).toString,
+      "attributeId" -> attributeId.toString
+    ))(hydrateAttribute)(conn)
+  }
+
+  def getProductAttributes(productId: Long, lang: String): Set[ProductAttribute] = db.withConnection { conn =>
     val sql =
       s"""
         SELECT
@@ -471,7 +495,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          	LEFT JOIN inv_values v ON v.id = pa.attribute_value AND pa.is_reference = 1
          	LEFT JOIN translations tv ON tv.description_id = v.description_id AND tv.lang_id = @langId
          	LEFT JOIN translations dtv ON dtv.description_id = v.description_id AND dtv.is_default = 1
-         WHERE pa.product_id = @productId;
+         WHERE pa.product_id = @productId
        """
 
     DatabaseHelper.fetchMany(sql, Map(
@@ -480,32 +504,142 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     ))(hydrateProductAttribute)(conn).toSet
   }
 
+  def getProductAttribute(productId: Long, attributeId: Long, lang: String): Option[ProductAttribute] = db.withConnection { conn =>
+    val sql =
+      s"""
+        SELECT
+         	pa.id AS record_id, pa.attribute_value, pa.is_reference, pa.is_editable,
+         	a.id AS attribute_id, a.code AS attribute_code, a.creation_date AS attribute_creation_date, a.modification_date AS attribute_modification_date,
+         	data_types.code AS attribute_data_type, input_types.code AS attribute_input_type,
+         	COALESCE(t.label, dt.label) AS attribute_name,
+         	COALESCE(t.short_description, dt.short_description) AS attribute_short_description,
+         	COALESCE(t.long_description, dt.long_description) AS attribute_long_description,
+         	COALESCE(COALESCE(tv.label, dtv.label), pa.attribute_value) AS value,
+          v.sku AS value_sku, v.id AS value_id
+         FROM inv_product_attributes AS pa
+         	JOIN inv_attributes a ON a.id = pa.attribute_id
+         	JOIN data_types ON data_types.id = a.data_type_id
+         	JOIN input_types ON input_types.id = a.input_type_id
+         	JOIN translations dt ON dt.description_id = a.description_id AND dt.is_default = 1
+         	LEFT JOIN translations t ON t.description_id = a.description_id AND t.lang_id = @langId
+         	LEFT JOIN inv_values v ON v.id = pa.attribute_value AND pa.is_reference = 1
+         	LEFT JOIN translations tv ON tv.description_id = v.description_id AND tv.lang_id = @langId
+         	LEFT JOIN translations dtv ON dtv.description_id = v.description_id AND dtv.is_default = 1
+         WHERE pa.product_id = @productId AND pa.attribute_id = @attributeId
+       """
+
+    DatabaseHelper.fetchOne(sql, Map(
+      "langId" -> getLangId(lang).toString,
+      "productId" -> productId.toString,
+      "attributeId" -> attributeId.toString,
+    ))(hydrateProductAttribute)(conn)
+  }
+
+  def getProductCategory(id: Long, lang: String): Option[ProductCategory] = db.withConnection { conn =>
+    val sql =
+      """
+         SELECT
+           c.*,
+          COALESCE(t.label, dt.label) AS `c.name`,
+          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `c.long_description`
+         FROM inv_product_categories AS c
+         JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
+         LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
+         WHERE c.id = @categoryId
+       """
+    val params = Map(
+      "langId" -> getLangId(lang).toString,
+      "categoryId" -> id.toString
+    )
+
+    val optCategory = DatabaseHelper.fetchOne(sql, params)(hydrateProductCategory)(conn)
+
+    optCategory.map { category =>
+      val parents = getCategoryParents(category.id.get)
+
+      category.copy(parents = parents)
+    }
+  }
+
+  def getProductCategories(lang: String): Future[Seq[(ProductCategory, Int)]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          c.*,
+          COALESCE(t.label, dt.label) AS `c.name`,
+          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `c.long_description`,
+          IF(c.left_id = 1, 1, COUNT(parent.id)) AS depth
+        FROM inv_product_categories c
+          JOIN inv_product_categories parent ON c.left_id BETWEEN parent.left_id AND parent.right_id
+          JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
+          LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
+        GROUP BY c.id
+        ORDER BY c.left_id
+      """
+      val params = Map(
+        "langId" -> getLangId(lang).toString
+      )
+
+      val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
+        val category = hydrateProductCategory(rs)
+        (category, rs.getInt("depth"))
+      })(conn)
+
+      categories
+    }
+  }
+
+  def getAttributes(lang: String): Future[Seq[Attribute]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        s"""
+        SELECT
+         	a.*,
+         	COALESCE(t.label, dt.label) AS label,
+         	COALESCE(t.short_description, dt.short_description) AS short_description,
+         	COALESCE(t.long_description, dt.long_description) AS long_description,
+          data_types.code AS data_type,
+          input_types.code AS input_type
+         FROM inv_attributes a
+         	JOIN data_types ON data_types.id = a.data_type_id
+         	JOIN input_types ON input_types.id = a.input_type_id
+         	JOIN translations dt ON dt.description_id = a.description_id AND dt.is_default = 1
+         	LEFT JOIN translations t ON t.description_id = a.description_id AND t.lang_id = @langId
+         ORDER BY label ASC
+       """
+
+      DatabaseHelper.fetchMany(sql, Map(
+        "langId" -> getLangId(lang).toString,
+      ))(hydrateAttribute)(conn)
+    }
+  }
+
+  def getProductDepartments(lang: String): Future[Seq[ProductDepartment]] = Future {
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          d.*,
+          COALESCE(t.label, dt.label) AS `d.name`,
+          COALESCE(t.short_description, dt.short_description) AS `d.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `d.long_description`
+        FROM inv_departments d
+        JOIN translations dt ON dt.description_id = d.description_id AND dt.is_default = 1
+        LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
+      """
+      val params = Map(
+        "langId" -> getLangId(lang).toString
+      )
+
+      DatabaseHelper.fetchMany(sql, params)(hydrateProductDepartment)(conn)
+    }
+  }
+
   private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
     ProductChild(product, rs.getString("type"), rs.getLong("quantity"), rs.getBoolean("is_visible"), rs.getBoolean("is_compiled"))
-
-  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
-    ProductAttribute(
-      id = rs.getLong("record_id"),
-      attribute = Attribute(
-        rs.getLong("attribute_id"),
-        rs.getString("attribute_code"),
-        rs.getString("attribute_data_type"),
-        rs.getString("attribute_input_type"),
-        Description(
-          rs.getString("attribute_name"),
-          rs.getString("attribute_short_description"),
-          rs.getString("attribute_long_description")
-        ),
-        rs.getTimestamp("attribute_creation_date").toLocalDateTime,
-        DatabaseHelper.getNullable[LocalDateTime]("attribute_modification_date", rs)
-      ),
-      value = rs.getString("value"),
-      valueId = DatabaseHelper.getNullable[Long]("value_id", rs),
-      valueSku = DatabaseHelper.getNullable[String]("value_sku", rs),
-      isEditable = rs.getBoolean("is_editable"),
-      isReference = rs.getBoolean("is_reference")
-    )
-  }
 
   private def hydrateAttributeValue(rs: ResultSet): AttributeValue = {
     val ts = rs.getTimestamp("modification_date")
@@ -556,6 +690,30 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     )
   }
 
+  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
+    ProductAttribute(
+      id = rs.getLong("record_id"),
+      attribute = Attribute(
+        rs.getLong("attribute_id"),
+        rs.getString("attribute_code"),
+        rs.getString("attribute_data_type"),
+        rs.getString("attribute_input_type"),
+        Description(
+          rs.getString("attribute_name"),
+          rs.getString("attribute_short_description"),
+          rs.getString("attribute_long_description")
+        ),
+        rs.getTimestamp("attribute_creation_date").toLocalDateTime,
+        DatabaseHelper.getNullable[LocalDateTime]("attribute_modification_date", rs)
+      ),
+      value = rs.getString("value"),
+      valueId = DatabaseHelper.getNullable[Long]("value_id", rs),
+      valueSku = DatabaseHelper.getNullable[String]("value_sku", rs),
+      isEditable = rs.getBoolean("is_editable"),
+      isReference = rs.getBoolean("is_reference")
+    )
+  }
+
   private def hydrateProductCategory(rs: ResultSet): ProductCategory = {
     ProductCategory(
       Some(rs.getLong("c.id")),
@@ -594,84 +752,6 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         .map(product => hydrateProductChild(product, rs))
         .getOrElse(throw new RuntimeException(s"$childProductId does not exist"))
     }(conn)
-  }
-
-  def getProductCategory(id: Long, lang: String): Option[ProductCategory] = db.withConnection { conn =>
-    val sql =
-      """
-         SELECT
-           c.*,
-          COALESCE(t.label, dt.label) AS `c.name`,
-          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
-          COALESCE(t.long_description, dt.long_description) AS `c.long_description`
-         FROM inv_product_categories AS c
-         JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
-         LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
-         WHERE c.id = @categoryId
-       """
-    val params = Map(
-      "langId" -> getLangId(lang).toString,
-      "categoryId" -> id.toString
-    )
-
-    val optCategory = DatabaseHelper.fetchOne(sql, params)(hydrateProductCategory)(conn)
-
-    optCategory.map { category =>
-      val parents = getCategoryParents(category.id.get)
-
-      category.copy(parents = parents)
-    }
-  }
-
-  def getProductCategories(lang: String): Future[Seq[(ProductCategory, Int)]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        """
-        SELECT
-          c.*,
-          COALESCE(t.label, dt.label) AS `c.name`,
-          COALESCE(t.short_description, dt.short_description) AS `c.short_description`,
-          COALESCE(t.long_description, dt.long_description) AS `c.long_description`,
-          COUNT(parent.id) AS depth
-        FROM inv_product_categories c
-          JOIN inv_product_categories parent ON c.left_id BETWEEN parent.left_id AND parent.right_id
-          JOIN translations dt ON dt.description_id = c.description_id AND dt.is_default = 1
-          LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
-        GROUP BY c.id
-        ORDER BY c.left_id
-      """
-      val params = Map(
-        "langId" -> getLangId(lang).toString
-      )
-
-      val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
-        val category = hydrateProductCategory(rs)
-        (category, rs.getInt("depth"))
-      })(conn)
-
-      categories
-    }
-  }
-
-  def getProductDepartments(lang: String): Future[Seq[ProductDepartment]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        """
-        SELECT
-          d.*,
-          COALESCE(t.label, dt.label) AS `d.name`,
-          COALESCE(t.short_description, dt.short_description) AS `d.short_description`,
-          COALESCE(t.long_description, dt.long_description) AS `d.long_description`
-        FROM inv_departments d
-        JOIN translations dt ON dt.description_id = d.description_id AND dt.is_default = 1
-        LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
-      """
-      val params = Map(
-        "langId" -> getLangId(lang).toString
-      )
-
-      DatabaseHelper.fetchMany(sql, params)(hydrateProductDepartment)(conn);
-    }
   }
 
   private def getCategoryParents(categoryId: Long): SortedSet[String] = db.withConnection { conn =>
@@ -716,6 +796,17 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       rs.getString("label"),
       rs.getString("short_description"),
       rs.getString("long_description")
+    )
+
+  private def hydrateAttribute(rs: ResultSet): Attribute =
+    Attribute(
+      rs.getLong("id"),
+      rs.getString("code"),
+      rs.getString("data_type"),
+      rs.getString("input_type"),
+      hydrateDescription(rs),
+      rs.getTimestamp("creation_date").toLocalDateTime,
+      DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs)
     )
 
   def applyProductAttributeOverrides(product: Product, attributeOverrides: Seq[(String, String)], lang: String): Product = {

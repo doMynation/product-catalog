@@ -8,6 +8,7 @@ import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.dtos._
 import inventory.util.DatabaseHelper
+import play.api.Logger
 import play.api.db.Database
 import shared.dtos.TranslationDTO
 
@@ -108,7 +109,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     }
   }
 
-  def createTranslation(descriptionId: Long, translation: TranslationDTO): Try[Long] = db.withConnection { conn =>
+  def createTranslation(descriptionId: Long, translation: TranslationDTO)(implicit conn: Connection): Try[Long] = {
     Try {
       DatabaseHelper.insert("translations", Map(
         "description_id" -> descriptionId.toString,
@@ -121,7 +122,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     }
   }
 
-  def createDescription(translations: Seq[TranslationDTO]): Try[Long] = db.withConnection { conn =>
+  def createDescription(translations: Seq[TranslationDTO])(implicit conn: Connection): Try[Long] = {
     // Create the description entry
     val descriptionIdTry = Try {
       DatabaseHelper.insert("descriptions", Map(
@@ -167,16 +168,32 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     }
   }
 
-  def createProductAttribute(productId: Long, attribute: ProductAttributeDTO)(implicit conn: Connection): Try[Long] = {
+  def createProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Try[Long] = {
+    Logger.info(s"Adding ${dto.toString}")
+
     Try {
       DatabaseHelper.insert("inv_product_attributes", Map(
         "product_id" -> productId.toString,
-        "attribute_id" -> attribute.attributeId.toString,
-        "attribute_value" -> attribute.valueId.getOrElse(attribute.value).toString,
-        "is_reference" -> attribute.isReference.toInt.toString,
-        "is_editable" -> attribute.isEditable.toInt.toString,
+        "attribute_id" -> dto.attributeId.toString,
+        "attribute_value" -> dto.valueId.getOrElse(dto.value).toString,
+        "is_reference" -> dto.isReference.toInt.toString,
+        "is_editable" -> dto.isEditable.toInt.toString,
       ))(conn)
     }
+  }
+
+  def updateProductAttribute(recordId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Try[Boolean] = Try {
+    val affected = DatabaseHelper.update(
+      "inv_product_attributes",
+      List("id = @id"),
+      Map("id" -> recordId.toString),
+      Map(
+        "attribute_value" -> dto.valueId.getOrElse(dto.value).toString,
+        "is_reference" -> dto.isReference.toInt.toString,
+        "is_editable" -> dto.isEditable.toInt.toString,
+      ))(conn)
+
+    affected > 0
   }
 
   def createProductAssemblyPart(productId: Long, part: ProductAssemblyPartDTO)(implicit conn: Connection): Try[Long] = {

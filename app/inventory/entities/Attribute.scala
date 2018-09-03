@@ -16,5 +16,6 @@ case class Attribute(
                       inputType: String,
                       description: Description,
                       createdAt: LocalDateTime = LocalDateTime.now,
-                      updatedAt: Option[LocalDateTime] = None
+                      updatedAt: Option[LocalDateTime] = None,
+                      values: Seq[AttributeValue] = Seq()
                     ) extends TimestampEntity

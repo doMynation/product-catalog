@@ -6,4 +6,3 @@ case class ProductAttributeDTO(
                                 valueId: Option[Long] = None,
                                 isEditable: Boolean,
                                 isReference: Boolean)
-

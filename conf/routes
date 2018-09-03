@@ -13,6 +13,7 @@ GET           /productCategories/all                                            
 GET           /productCategories/$id<[0-9]+>                                                                                      inventory.controllers.ProductController.getCategory(id: Long, lang: Option[String])
 
 GET           /productDepartments/all                                                                                             inventory.controllers.ProductController.getDepartments(lang: Option[String])
+GET           /attributes/all                                                                                                     inventory.controllers.ProductController.getAttributes(lang: Option[String])
 
 GET           /store/products                                                                                                     inventory.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
 GET           /store/products/$id<[0-9]+>                                                                                         inventory.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
@@ -46,9 +47,13 @@ GET           /stores/:storeId/quotes/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-
 # Admin
 GET           /admin/products/$id<[0-9]+>                                                                                         inventory.controllers.AdminProductController.get(id: Long, lang: Option[String])
 DELETE        /admin/products/$id<[0-9]+>                                                                                         inventory.controllers.AdminProductController.delete(id: Long)
+PATCH         /admin/products/$id<[0-9]+>/enable                                                                                  inventory.controllers.AdminProductController.enable(id: Long)
 PATCH         /admin/products/$id<[0-9]+>/disable                                                                                 inventory.controllers.AdminProductController.disable(id: Long)
 POST          /admin/products/$id<[0-9]+>/clone                                                                                   inventory.controllers.AdminProductController.duplicate(id: Long)
 
 # Bulk actions
+PATCH         /admin/products-bulk/enable                                                                                         inventory.controllers.AdminProductController.bulkEnable()
 PATCH         /admin/products-bulk/disable                                                                                        inventory.controllers.AdminProductController.bulkDisable()
+PATCH         /admin/products-bulk/+attributes                                                                                    inventory.controllers.AdminProductController.bulkAddAttributes()
+
 GET           /admin/test                                                                                                         inventory.controllers.AdminProductController.test()
