@@ -8,35 +8,64 @@ import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.dtos._
 import inventory.util.DatabaseHelper
-import play.api.Logger
 import play.api.db.Database
 import shared.dtos.TranslationDTO
+import shared.entities.Lang
 
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
 import scala.util.Try
 import shared.imports.implicits._
 
+import scala.concurrent.duration._
+
 final class ProductWriteRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
-  // @todo: Move this elsewhere
-  private def getLangId(langCode: String): Int = langCode match {
-    case "fr" => 1
-    case "en" => 2
-    case "es" => 3
-    case _ => 1
+  // Type alias
+  type Product = inventory.entities.Product
+
+  def updateProduct(product: Product, dto: ProductDTO): Boolean = db.withTransaction { implicit conn =>
+    val baseFields: Map[String, String] = Map(
+      "sku" -> dto.sku,
+      "category_id" -> dto.categoryId.toString,
+      "department_id" -> dto.departmentId.map(_.toString).getOrElse(""),
+      "retail_price" -> dto.price.toString,
+      "cost_price" -> dto.costPrice.toString,
+      "tags" -> dto.tags.mkString(","),
+      "is_custom" -> dto.isCustom.toInt.toString,
+      "status" -> dto.isEnabled.toInt.toString,
+      "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
+      "mpn" -> dto.metadata.getOrElse("mpn", ""),
+    ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
+
+    // Update product
+    val f = updateProductFields(product.id.get, baseFields)
+    val isSuccess = Await.result(f, 5.second)
+
+    // Handle attributes
+    deleteTranslations(product.descriptionId)
+    dto.translations.foreach(createTranslation(product.descriptionId, _))
+
+    // Handle attributes
+    deleteProductAttributes(product.id.get)
+    dto.attributes.foreach(createProductAttribute(product.id.get, _))
+
+    isSuccess
   }
 
-  def updateProduct(productId: Long, fields: Map[String, String]): Future[Boolean] = Future {
-    db.withConnection { conn =>
+  def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Future[Boolean] = Future {
+    val task = (connection: Connection) => {
       val affected = DatabaseHelper.update("inv_products",
         List("id = @productId"),
         Map("productId" -> productId.toString),
         fields ++ Map(
           "modification_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         )
-      )(conn)
+      )(connection)
 
       affected > 0
     }
+
+    if (connection == null) db.withConnection(task)
+    else task(connection)
   }
 
   def bulkUpdateProduct(productIds: Seq[Long], fields: Map[String, String]): Future[Boolean] = Future {
@@ -44,7 +73,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
       val now = LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
       val setClause = fields.keys.map(column => s"$column=@$column").mkString(", ")
       val inClause = productIds.map(id => s"@p_$id").mkString(",")
-      val sql = s"UPDATE inv_products SET $setClause WHERE id IN ($inClause)";
+      val sql = s"UPDATE inv_products SET $setClause WHERE id IN ($inClause)"
       val params = fields ++
         productIds.map(id => s"p_$id" -> id.toString).toMap +
         ("modification_date" -> now)
@@ -63,6 +92,24 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     }
   }
 
+  def deleteTranslations(descriptionId: Long)(implicit connection: Connection): Boolean = {
+    val affectedRows = DatabaseHelper.executeUpdate(
+      "DELETE FROM translations WHERE description_id = @descriptionId",
+      Map("descriptionId" -> descriptionId.toString)
+    )(connection)
+
+    affectedRows > 0
+  }
+
+  def deleteProductAttributes(productId: Long)(implicit connection: Connection): Boolean = {
+    val affectedRows = DatabaseHelper.executeUpdate(
+      "DELETE FROM inv_product_attributes WHERE product_id = @productId",
+      Map("productId" -> productId.toString)
+    )(connection)
+
+    affectedRows > 0
+  }
+
   def createProduct(dto: ProductDTO): Try[Long] = db.withTransaction { implicit conn =>
     // Create a description
     val descriptionIdTry = createDescription(dto.translations)
@@ -75,7 +122,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
         "retail_price" -> dto.price.toString,
         "cost_price" -> dto.costPrice.toString,
         "tags" -> dto.tags.mkString(","),
-        "is_kit" -> dto.metadata.get("isKit").getOrElse("0"),
+        "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
         "is_custom" -> dto.isCustom.toInt.toString,
         "status" -> dto.isEnabled.toInt.toString,
         "creation_date" -> dto.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
@@ -113,7 +160,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     Try {
       DatabaseHelper.insert("translations", Map(
         "description_id" -> descriptionId.toString,
-        "lang_id" -> getLangId(translation.lang).toString,
+        "lang_id" -> Lang.fromString(translation.lang, 1).toString,
         "label" -> translation.name,
         "short_description" -> translation.shortDescription,
         "long_description" -> translation.longDescription,
@@ -169,8 +216,6 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
   }
 
   def createProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Try[Long] = {
-    Logger.info(s"Adding ${dto.toString}")
-
     Try {
       DatabaseHelper.insert("inv_product_attributes", Map(
         "product_id" -> productId.toString,

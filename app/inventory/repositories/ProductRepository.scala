@@ -7,27 +7,14 @@ import infrastructure.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
 import play.api.db.Database
-import scala.collection.immutable.{Queue, SortedSet}
+import shared.entities.Lang
+import scala.collection.immutable.{ListSet, Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
 final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
   // Type alias
   type Product = inventory.entities.Product
-
-  private def getLangId(langCode: String): Int = langCode match {
-    case "fr" => 1
-    case "en" => 2
-    case "es" => 3
-    case _ => 1
-  }
-
-  private def getLangCode(langId: Long): String = langId match {
-    case 1 => "fr"
-    case 2 => "en"
-    case 3 => "es"
-    case _ => "fr"
-  }
 
   def get(id: Long, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
     val product = store.map(getProductByStore(id, lang, _)) getOrElse getProduct(id, lang)
@@ -56,7 +43,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
     DatabaseHelper.fetchOne(sql, Map(
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "valueId" -> valueId.toString
     ))(hydrateAttributeValue)(conn)
   }
@@ -77,7 +64,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
     DatabaseHelper.fetchMany(sql, Map(
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
     ))(hydrateAttributeValue)(conn)
   }
@@ -171,7 +158,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, Map(
       "productId" -> id.toString,
-      "langId" -> getLangId(lang).toString
+      "langId" -> Lang.fromString(lang, 1).toString
     ))(hydrateProduct)(conn)
   }
 
@@ -206,7 +193,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, Map(
       "sku" -> sku,
-      "langId" -> getLangId(lang).toString
+      "langId" -> Lang.fromString(lang, 1).toString
     ))(hydrateProduct)(conn)
   }
 
@@ -244,7 +231,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, Map(
       "productId" -> id.toString,
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "storeId" -> store.id.get.toString
     ))(hydrateProduct)(conn)
   }
@@ -280,7 +267,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     DatabaseHelper.fetchOne(sql, Map(
       "storeId" -> store.id.get.toString,
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "sku" -> sku
     ))(hydrateProduct)(conn)
   })
@@ -297,7 +284,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       val havings = new ListBuffer[String]()
       val joins = new ListBuffer[String]()
       var params: Map[String, String] = Map(
-        "langId" -> getLangId(lang).toString
+        "langId" -> Lang.fromString(lang, 1).toString
       )
 
       var priceColumn = "p.retail_price"
@@ -364,6 +351,15 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         }.mkString(",")
 
         joins += s"JOIN inv_product_categories tree ON tree.code IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
+      })
+
+      sr.filters.get("categoryId").foreach(value => {
+        val categories = value.split(",")
+        val inClause = categories.foldLeft(Queue[String]()) {
+          (acc, categoryId) => acc :+ s"$categoryId"
+        }.mkString(",")
+
+        joins += s"JOIN inv_product_categories tree ON tree.id IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
       })
 
       // When a implicit store is defined, enforce it and disallow filtering by store
@@ -469,7 +465,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
     DatabaseHelper.fetchOne(sql, Map(
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
     ))(hydrateAttribute)(conn)
   }
@@ -496,12 +492,15 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          	LEFT JOIN translations tv ON tv.description_id = v.description_id AND tv.lang_id = @langId
          	LEFT JOIN translations dtv ON dtv.description_id = v.description_id AND dtv.is_default = 1
          WHERE pa.product_id = @productId
+         ORDER BY pa.id
        """
 
-    DatabaseHelper.fetchMany(sql, Map(
-      "langId" -> getLangId(lang).toString,
+    val spa: Seq[ProductAttribute] = DatabaseHelper.fetchMany[ProductAttribute](sql, Map(
+      "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString
-    ))(hydrateProductAttribute)(conn).toSet
+    ))(hydrateProductAttribute)(conn)
+
+    spa.to[ListSet]
   }
 
   def getProductAttribute(productId: Long, attributeId: Long, lang: String): Option[ProductAttribute] = db.withConnection { conn =>
@@ -529,7 +528,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
     DatabaseHelper.fetchOne(sql, Map(
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString,
       "attributeId" -> attributeId.toString,
     ))(hydrateProductAttribute)(conn)
@@ -549,7 +548,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          WHERE c.id = @categoryId
        """
     val params = Map(
-      "langId" -> getLangId(lang).toString,
+      "langId" -> Lang.fromString(lang, 1).toString,
       "categoryId" -> id.toString
     )
 
@@ -580,7 +579,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         ORDER BY c.left_id
       """
       val params = Map(
-        "langId" -> getLangId(lang).toString
+        "langId" -> Lang.fromString(lang, 1).toString
       )
 
       val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
@@ -612,7 +611,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
       DatabaseHelper.fetchMany(sql, Map(
-        "langId" -> getLangId(lang).toString,
+        "langId" -> Lang.fromString(lang, 1).toString,
       ))(hydrateAttribute)(conn)
     }
   }
@@ -631,7 +630,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
       """
       val params = Map(
-        "langId" -> getLangId(lang).toString
+        "langId" -> Lang.fromString(lang, 1).toString
       )
 
       DatabaseHelper.fetchMany(sql, params)(hydrateProductDepartment)(conn)
@@ -667,6 +666,12 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       "extrusionId" -> rs.getString("extrusion_template_id"),
     )
 
+    val tags = DatabaseHelper.getNullable[String]("tags", rs) match {
+      case Some("") => List[String]()
+      case Some(s) => s.split(",").toList
+      case _ => List[String]()
+    }
+
     val department = DatabaseHelper.getNullable[String]("d.code", rs).map { _ =>
       hydrateProductDepartment(rs)
     }
@@ -679,7 +684,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       Description(rs.getString("p.name"), rs.getString("p.short_description"), rs.getString("p.long_description")),
       rs.getDouble("price"),
       rs.getDouble("cost_price"),
-      tags = DatabaseHelper.getNullable[String]("tags", rs).fold(Seq[String]())(_.split(",")),
+      tags = tags,
       category = Some(hydrateProductCategory(rs)),
       department = department,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
@@ -786,7 +791,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   private def hydrateTranslation(rs: ResultSet): Translation =
     Translation(
       id = rs.getLong("id"),
-      lang = getLangCode(rs.getLong("lang_id")),
+      lang = Lang.fromId(rs.getInt("lang_id"), "fr"),
       description = hydrateDescription(rs),
       isDefault = rs.getBoolean("is_default")
     )

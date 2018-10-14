@@ -50,6 +50,7 @@ DELETE        /admin/products/$id<[0-9]+>                                       
 PATCH         /admin/products/$id<[0-9]+>/enable                                                                                  inventory.controllers.AdminProductController.enable(id: Long)
 PATCH         /admin/products/$id<[0-9]+>/disable                                                                                 inventory.controllers.AdminProductController.disable(id: Long)
 POST          /admin/products/$id<[0-9]+>/clone                                                                                   inventory.controllers.AdminProductController.duplicate(id: Long)
+PUT           /admin/products/$id<[0-9]+>                                                                                         inventory.controllers.AdminProductController.update(id: Long)
 
 # Bulk actions
 PATCH         /admin/products-bulk/enable                                                                                         inventory.controllers.AdminProductController.bulkEnable()

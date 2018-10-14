@@ -1,6 +1,6 @@
 package sales.entities
 
-import shared.entities.IntToStringIdentifier
+import shared.IntToStringIdentifier
 
 object QuoteStatus extends IntToStringIdentifier {
   val IMPORT = "import"

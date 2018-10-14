@@ -5,11 +5,13 @@ import javax.inject.Inject
 import inventory.ProductService
 import inventory.dtos.AttributeIdValuePair
 import inventory.entities.Admin.ProductEditData
+import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
 import play.api.Logger
 import play.api.db.Database
 import play.api.libs.json.{Json, Reads}
 import play.api.mvc.{AbstractController, ControllerComponents}
+
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -24,8 +26,6 @@ class AdminProductController @Inject()(
                                         productService: ProductService,
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   def test = Action {
-    //    productWriteRepository.test
-
     Ok("HI")
   }
 
@@ -39,7 +39,11 @@ class AdminProductController @Inject()(
       translations = productReadRepository.getTranslations(product.descriptionId)
     } yield ProductEditData(product, translations)
 
-    dataOpt.map(productData => Ok(Json.toJson(productData))) getOrElse (NotFound(s"Product id ${productId} not found"))
+    dataOpt map { productData =>
+      Ok(Json.obj("product" -> productData.product, "translations" -> productData.translations))
+    } getOrElse {
+      NotFound(s"Product id $productId not found")
+    }
   }
 
   def delete(productId: Long) = Action.async {
@@ -53,7 +57,7 @@ class AdminProductController @Inject()(
   }
 
   def enable(productId: Long) = Action.async {
-    val future = productWriteRepository.updateProduct(productId, Map("status" -> "1"))
+    val future = productWriteRepository.updateProductFields(productId, Map("status" -> "1"))
 
     future.map { _ =>
       Ok
@@ -65,7 +69,7 @@ class AdminProductController @Inject()(
   }
 
   def disable(productId: Long) = Action.async {
-    val future = productWriteRepository.updateProduct(productId, Map("status" -> "0"))
+    val future = productWriteRepository.updateProductFields(productId, Map("status" -> "0"))
 
     future.map { _ =>
       Ok
@@ -84,6 +88,17 @@ class AdminProductController @Inject()(
       case Failure(t) =>
         Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
+    }
+  }
+
+  def update(productId: Long) = Action(parse.json) { req =>
+    val data = (req.body \ "fields").asOpt[EditProductForm]
+
+    data map { form =>
+      productService.updateProduct(productId, form)
+      Ok
+    } getOrElse {
+      BadRequest("Invalid parameters")
     }
   }
 

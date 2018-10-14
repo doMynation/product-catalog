@@ -1,28 +1,12 @@
 package inventory.entities
 
 import java.time.LocalDateTime
-
 import inventory.dtos.ProductDTO
 import play.api.libs.json._
 import shared.{DTOMappable, TimestampEntity}
 
 object Product extends DTOMappable[Product, ProductDTO] {
   implicit lazy val productWrites: Writes[Product] = Json.writes[Product]
-
-  //  implicit val productReads: Reads[Product] = (
-  //    (__ \ "id").readNullable[Long] and
-  //      (__ \ "sku").read[String] and
-  //      (
-  //        (__ \ "name").read[String] and
-  //          (__ \ "short_description").read[String] and
-  //          (__ \ "long_description").read[String]
-  //        ) (Description.apply _) and
-  //      (__ \ "retail_price").read[Double] and
-  //      (__ \ "cost_price").read[Double] and
-  //      (__ \ "tags").read[Seq[String]] and
-  //      (__ \ "attributes").read[Seq[String]] and
-  //      (__ \ "children").read[Seq[ProductChild]]
-  //    ) (Product.apply _)
 
   override implicit def toDto(entity: Product): ProductDTO =
     ProductDTO(
@@ -69,5 +53,5 @@ case class Product(
 
   def getAttribute(code: String): Option[ProductAttribute] = attributes.find(_.attribute.code == code)
 
-  def replaceAttribute(a: ProductAttribute, b: ProductAttribute) = copy(attributes = attributes - a + b)
+  def replaceAttribute(a: ProductAttribute, b: ProductAttribute): Product = copy(attributes = attributes - a + b)
 }

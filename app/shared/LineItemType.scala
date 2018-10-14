@@ -1,7 +1,5 @@
 package shared
 
-import shared.entities.IntToStringIdentifier
-
 object LineItemType extends IntToStringIdentifier {
   val NORMAL = "normal"
   val INCLUDED = "included"

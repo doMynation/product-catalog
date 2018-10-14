@@ -5,13 +5,22 @@ import javax.inject.Inject
 
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO}
 import inventory.entities.{Attribute, Product, ProductAttribute}
+import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
-import play.api.Logger
 import play.api.db.Database
 
 import scala.util.{Failure, Random, Try}
 
 final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, db: Database) {
+
+  def updateProduct(productId: Long, form: EditProductForm): Try[Boolean] = Try {
+    readRepository.get(productId, "en").map { product =>
+      val spa: Seq[ProductAttributeDTO] = attributesPairsToDtos(form.attributes)
+      val dto = form.toDto.copy(attributes = spa)
+
+      writeRepository.updateProduct(product, dto)
+    }.getOrElse(false)
+  }
 
   def cloneProduct(productId: Long): Try[Product] = {
     // Fetch the product's info
@@ -47,7 +56,7 @@ final class ProductService @Inject()(readRepository: ProductRepository, writeRep
           attribute.id,
           pair.value,
           None,
-          false,
+          pair.isEditable,
           attribute.inputType == "select")
 
         insertOrReplaceProductAttribute(productId, dto)
@@ -64,13 +73,22 @@ final class ProductService @Inject()(readRepository: ProductRepository, writeRep
     val pao: Option[ProductAttribute] = readRepository.getProductAttribute(productId, dto.attributeId, "en")
 
     pao.map { pa =>
-      // Update the existing attribute
-      Logger.info(s"Replacing ${productId}'s ${dto.toString} ${pa.toString}")
-      Logger.info("NEW VALUE: " + dto.valueId.getOrElse(dto.value).toString)
-      Logger.info(writeRepository.updateProductAttribute(pa.id, dto).toString)
+      writeRepository.updateProductAttribute(pa.id, dto).toString
     } getOrElse {
       // Add a new attribute
       writeRepository.createProductAttribute(productId, dto)
     }
   }
+
+  private def attributesPairsToDtos(pairs: Seq[AttributeIdValuePair]): Seq[ProductAttributeDTO] =
+    for {
+      pair <- pairs
+      attribute <- readRepository.getAttribute(pair.id, "en")
+    } yield ProductAttributeDTO(
+      attribute.id,
+      pair.value,
+      None,
+      pair.isEditable,
+      attribute.inputType == "select"
+    )
 }
