@@ -1,12 +1,15 @@
 package inventory.controllers
 
 import javax.inject._
+
+import infrastructure.ApiResponse
 import inventory.actions.AuthenticatedAction
 import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
+
 import scala.concurrent.ExecutionContext
 import play.api.Logger
 
@@ -119,7 +122,7 @@ class ProductController @Inject()(authAction: AuthenticatedAction, cc: Controlle
     val chosenLang = lang.getOrElse("en")
 
     productRepository.search(sr, chosenLang, inc).map { searchResult =>
-      Ok(Json.toJson(searchResult))
+      Ok(Json.toJson(ApiResponse(searchResult.results, Map("count" -> searchResult.totalCount.toString))))
     } recover {
       case t: Throwable =>
         Logger.error(t.toString)

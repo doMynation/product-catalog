@@ -2,6 +2,7 @@ package inventory.controllers
 
 import javax.inject.Inject
 
+import infrastructure.{ApiError, ApiResponse}
 import inventory.ProductService
 import inventory.dtos.AttributeIdValuePair
 import inventory.entities.Admin.ProductEditData
@@ -9,9 +10,8 @@ import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
 import play.api.Logger
 import play.api.db.Database
-import play.api.libs.json.{Json, Reads}
+import play.api.libs.json.Json
 import play.api.mvc.{AbstractController, ControllerComponents}
-
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -26,7 +26,9 @@ class AdminProductController @Inject()(
                                         productService: ProductService,
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   def test = Action {
-    Ok("HI")
+    //    val resp = ApiResponse((584954, "name", BigDecimal(4.5)))
+    val resp = ApiResponse(Json.obj("hash" -> "hgoewjgoiew"))
+    Ok(Json.toJson(resp))
   }
 
   def get(productId: Long, lang: Option[String]) = Action {
@@ -40,7 +42,10 @@ class AdminProductController @Inject()(
     } yield ProductEditData(product, translations)
 
     dataOpt map { productData =>
-      Ok(Json.obj("product" -> productData.product, "translations" -> productData.translations))
+      Ok(Json.toJson(ApiResponse(Json.obj(
+        "product" -> productData.product,
+        "translations" -> productData.translations
+      ))))
     } getOrElse {
       NotFound(s"Product id $productId not found")
     }
@@ -84,7 +89,7 @@ class AdminProductController @Inject()(
     val productTry = productService.cloneProduct(productId)
 
     productTry match {
-      case Success(product) => Ok(Json.toJson(product))
+      case Success(product) => Ok(Json.toJson(ApiResponse(product)))
       case Failure(t) =>
         Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
@@ -95,8 +100,10 @@ class AdminProductController @Inject()(
     val data = (req.body \ "fields").asOpt[EditProductForm]
 
     data map { form =>
-      productService.updateProduct(productId, form)
-      Ok
+      productService.updateProduct(productId, form) match {
+        case Success(newHash) => Ok(Json.toJson(ApiResponse(Json.obj("hash" -> newHash))))
+        case _ => BadRequest(Json.toJson(ApiError(ApiError.INVALID_CHECKSUM, "This version is outdated.")))
+      }
     } getOrElse {
       BadRequest("Invalid parameters")
     }

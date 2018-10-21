@@ -21,7 +21,8 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
   }
 
   implicit val reads: Reads[EditProductForm] = (
-    (__ \ "sku").read[String] and
+    (__ \ "hash").read[String] and
+      (__ \ "sku").read[String] and
       (__ \ "categoryId").read[Long] and
       (__ \ "departmentId").readNullable[Long] and
       (__ \ "translations").read[List[TranslationDTO]] and
@@ -57,6 +58,7 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
 }
 
 case class EditProductForm(
+                            hash: String,
                             sku: String,
                             categoryId: Long,
                             departmentId: Option[Long] = None,

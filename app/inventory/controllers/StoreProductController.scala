@@ -2,11 +2,12 @@ package inventory.controllers
 
 import javax.inject._
 
+import infrastructure.ApiResponse
 import inventory.actions.AuthenticatedAction
 import inventory.entities.Store
 import inventory.repositories.ProductRepository
 import inventory.requestAttributes.Attrs
-import inventory.util.{DatabaseHelper, SearchRequest}
+import inventory.util.SearchRequest
 import play.api.db.Database
 import play.api.libs.json.Json
 import play.api.mvc._
@@ -89,7 +90,7 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     val chosenLang = lang.getOrElse("en")
 
     productRepository.search(sr, chosenLang, inc).map { searchResult =>
-      Ok(Json.toJson(searchResult))
+      Ok(Json.toJson(ApiResponse(searchResult.results, Map("count" -> searchResult.totalCount.toString))))
     } recover {
       case t: Throwable =>
         println(t)

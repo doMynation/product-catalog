@@ -343,6 +343,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         params = params + ("department" -> value)
       })
 
+      sr.filters.get("departmentId").foreach(value => {
+        wheres += "(d.id = @departmentId)"
+        params = params + ("departmentId" -> value)
+      })
+
       // `category` filter (e.g. "model", "model,option")
       sr.filters.get("category").foreach(value => {
         val categories = value.split(",")
@@ -659,9 +664,9 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
   private def hydrateProduct(rs: ResultSet): Product = {
     val metadata = Map(
-      "mpn" -> rs.getString("mpn"),
+      "mpn" -> DatabaseHelper.getNullable[String]("mpn", rs).getOrElse(""),
+      "imageUrl" -> DatabaseHelper.getNullable[String]("image_url", rs).getOrElse(""),
       "isKit" -> rs.getInt("is_kit").toString,
-      "imageUrl" -> rs.getString("image_url"),
       "stickerId" -> rs.getString("sticker_template_id"),
       "extrusionId" -> rs.getString("extrusion_template_id"),
     )
@@ -678,6 +683,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     Product(
       Some(rs.getLong("id")),
+      rs.getString("hash"),
       rs.getLong("category_id"),
       rs.getString("sku"),
       rs.getLong("p.description_id"),

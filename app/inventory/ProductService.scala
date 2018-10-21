@@ -13,14 +13,19 @@ import scala.util.{Failure, Random, Try}
 
 final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, db: Database) {
 
-  def updateProduct(productId: Long, form: EditProductForm): Try[Boolean] = Try {
-    readRepository.get(productId, "en").map { product =>
-      val spa: Seq[ProductAttributeDTO] = attributesPairsToDtos(form.attributes)
-      val dto = form.toDto.copy(attributes = spa)
+  def updateProduct(productId: Long, form: EditProductForm): Try[String] =
+    readRepository.get(productId, "en")
+      .filter(product => product.hash == form.hash)
+      .map(product => {
+        Try {
+          println(s"${form.hash} == ${product.hash}")
+          val spa: Seq[ProductAttributeDTO] = attributesPairsToDtos(form.attributes)
+          val dto = form.toDto.copy(attributes = spa)
 
-      writeRepository.updateProduct(product, dto)
-    }.getOrElse(false)
-  }
+          writeRepository.updateProduct(product, dto)
+        }
+      })
+      .getOrElse(Failure(new RuntimeException("Wrong version")))
 
   def cloneProduct(productId: Long): Try[Product] = {
     // Fetch the product's info

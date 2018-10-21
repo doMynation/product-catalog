@@ -3,6 +3,7 @@ package inventory.repositories
 import java.sql.Connection
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import javax.inject.Inject
 
 import infrastructure.DatabaseExecutionContext
@@ -22,8 +23,10 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
   // Type alias
   type Product = inventory.entities.Product
 
-  def updateProduct(product: Product, dto: ProductDTO): Boolean = db.withTransaction { implicit conn =>
+  def updateProduct(product: Product, dto: ProductDTO): String = db.withTransaction { implicit conn =>
+    val newHash = UUID.randomUUID().toString
     val baseFields: Map[String, String] = Map(
+      "hash" -> newHash,
       "sku" -> dto.sku,
       "category_id" -> dto.categoryId.toString,
       "department_id" -> dto.departmentId.map(_.toString).getOrElse(""),
@@ -48,7 +51,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     deleteProductAttributes(product.id.get)
     dto.attributes.foreach(createProductAttribute(product.id.get, _))
 
-    isSuccess
+    newHash
   }
 
   def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Future[Boolean] = Future {
@@ -116,6 +119,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
 
     descriptionIdTry.map { descriptionId =>
       val productData = Map(
+        "hash" -> UUID.randomUUID().toString,
         "category_id" -> dto.categoryId.toString,
         "description_id" -> descriptionId.toString,
         "sku" -> dto.sku,
