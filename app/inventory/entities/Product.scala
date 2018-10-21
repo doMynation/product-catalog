@@ -28,7 +28,7 @@ object Product extends DTOMappable[Product, ProductDTO] {
 }
 
 case class Product(
-                    id: Option[Long],
+                    id: Long,
                     hash: String,
                     categoryId: Long,
                     sku: String,

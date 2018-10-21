@@ -40,7 +40,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
 
     // Update product
-    val f = updateProductFields(product.id.get, baseFields)
+    val f = updateProductFields(product.id, baseFields)
     val isSuccess = Await.result(f, 5.second)
 
     // Handle attributes
@@ -48,8 +48,8 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     dto.translations.foreach(createTranslation(product.descriptionId, _))
 
     // Handle attributes
-    deleteProductAttributes(product.id.get)
-    dto.attributes.foreach(createProductAttribute(product.id.get, _))
+    deleteProductAttributes(product.id)
+    dto.attributes.foreach(createProductAttribute(product.id, _))
 
     newHash
   }

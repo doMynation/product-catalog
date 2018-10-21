@@ -10,7 +10,7 @@ object ProductCategory {
 }
 
 case class ProductCategory(
-                            id: Option[Long],
+                            id: Long,
                             code: String,
                             description: Description,
                             createdAt: LocalDateTime = LocalDateTime.now,

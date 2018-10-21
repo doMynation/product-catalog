@@ -9,7 +9,7 @@ object ProductRule extends DTOMappable[ProductRule, ProductRuleDTO] {
 
   override implicit def toDto(entity: ProductRule): ProductRuleDTO =
     ProductRuleDTO(
-      entity.product.id.get,
+      entity.product.id,
       entity.ruleType,
       entity.newPrice,
       entity.quantity,

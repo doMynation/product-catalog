@@ -4,12 +4,12 @@ import java.sql.ResultSet
 import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.entities.Store
-import inventory.util.{DatabaseHelper, SearchRequest}
+import inventory.util.{DatabaseHelper}
 import play.api.db.Database
-import shared.{Repository, StoreApiKey, StoreId}
+import shared.{StoreApiKey, StoreId}
 import scala.concurrent.Future
 
-final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) extends Repository[Store] {
+final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
 
   def get(id: StoreId): Future[Option[Store]] = Future {
     db.withConnection { conn =>
@@ -31,11 +31,9 @@ final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecuti
 
   private def hydrateStore(rs: ResultSet): Store = {
     Store(
-      Some(rs.getLong("id")),
+      rs.getLong("id"),
       rs.getString("name"),
       rs.getTimestamp("creation_date").toLocalDateTime
     )
   }
-
-  override def search(sr: SearchRequest, inclusions: Seq[String]) = ???
 }

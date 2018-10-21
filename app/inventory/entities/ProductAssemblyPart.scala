@@ -9,7 +9,7 @@ object ProductAssemblyPart extends DTOMappable[ProductAssemblyPart, ProductAssem
 
   override implicit def toDto(entity: ProductAssemblyPart): ProductAssemblyPartDTO =
     ProductAssemblyPartDTO(
-      entity.part.id.get,
+      entity.part.id,
       entity.partType,
       entity.isDefault,
     )

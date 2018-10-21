@@ -104,7 +104,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   private def getProductRuleByStore(id: Long, lang: String, store: Store) = db.withConnection { conn =>
     val sql = "SELECT * FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.id = @ruleId"
     val params = Map(
-      "storeId" -> store.id.get.toString,
+      "storeId" -> store.id.toString,
       "ruleId" -> id.toString,
     )
 
@@ -117,7 +117,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   private def getProductRulesByStore(productId: Long, lang: String, store: Store): Seq[ProductRule] = db.withConnection { conn =>
     val sql = "SELECT pr.* FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.product_id = @productId"
     val params = Map(
-      "storeId" -> store.id.get.toString,
+      "storeId" -> store.id.toString,
       "productId" -> productId.toString,
     )
 
@@ -198,8 +198,6 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   }
 
   private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection { conn =>
-    if (store.id.isEmpty) return None
-
     val sql =
       s"""
             SELECT
@@ -232,13 +230,11 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     DatabaseHelper.fetchOne(sql, Map(
       "productId" -> id.toString,
       "langId" -> Lang.fromString(lang, 1).toString,
-      "storeId" -> store.id.get.toString
+      "storeId" -> store.id.toString
     ))(hydrateProduct)(conn)
   }
 
   private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(conn => {
-    if (store.id.isEmpty) return None
-
     val sql =
       s"""
             SELECT
@@ -266,7 +262,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
        """
 
     DatabaseHelper.fetchOne(sql, Map(
-      "storeId" -> store.id.get.toString,
+      "storeId" -> store.id.toString,
       "langId" -> Lang.fromString(lang, 1).toString,
       "sku" -> sku
     ))(hydrateProduct)(conn)
@@ -369,11 +365,9 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
       // When a implicit store is defined, enforce it and disallow filtering by store
       if (store.isDefined) {
-        store.get.id.foreach(storeId => {
-          joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
-          params = params + ("storeId" -> storeId.toString)
-          priceColumn = "IFNULL(ps.price, p.retail_price)"
-        })
+        joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
+        params = params + ("storeId" -> store.get.id.toString)
+        priceColumn = "IFNULL(ps.price, p.retail_price)"
       } else {
         sr.filters.get("storeId").foreach(value => {
           joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
@@ -560,7 +554,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     val optCategory = DatabaseHelper.fetchOne(sql, params)(hydrateProductCategory)(conn)
 
     optCategory.map { category =>
-      val parents = getCategoryParents(category.id.get)
+      val parents = getCategoryParents(category.id)
 
       category.copy(parents = parents)
     }
@@ -682,7 +676,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     }
 
     Product(
-      Some(rs.getLong("id")),
+      rs.getLong("id"),
       rs.getString("hash"),
       rs.getLong("category_id"),
       rs.getString("sku"),
@@ -727,7 +721,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
   private def hydrateProductCategory(rs: ResultSet): ProductCategory = {
     ProductCategory(
-      Some(rs.getLong("c.id")),
+      rs.getLong("c.id"),
       rs.getString("c.code"),
       Description(
         rs.getString("c.name"),
@@ -775,10 +769,10 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {
     include.foldLeft(product) { (p, include) =>
       include match {
-        case ProductInclusions.ATTRIBUTES => p.copy(attributes = getProductAttributes(product.id.get, lang))
-        case ProductInclusions.CHILDREN => p.copy(children = getProductChildren(product.id.get, lang))
-        case ProductInclusions.RULES => p.copy(rules = getProductRules(product.id.get, lang))
-        case ProductInclusions.ASSEMBLY_PARTS => p.copy(assemblyParts = getProductAssemblyParts(product.id.get, lang))
+        case ProductInclusions.ATTRIBUTES => p.copy(attributes = getProductAttributes(product.id, lang))
+        case ProductInclusions.CHILDREN => p.copy(children = getProductChildren(product.id, lang))
+        case ProductInclusions.RULES => p.copy(rules = getProductRules(product.id, lang))
+        case ProductInclusions.ASSEMBLY_PARTS => p.copy(assemblyParts = getProductAssemblyParts(product.id, lang))
         case _ => p
       }
     }
