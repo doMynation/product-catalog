@@ -16,5 +16,4 @@ case class ProductCategory(
                             createdAt: LocalDateTime = LocalDateTime.now,
                             updatedAt: Option[LocalDateTime] = None,
                             parents: SortedSet[String] = SortedSet()
-                          ) extends TimestampEntity {
-}
+                          ) extends TimestampEntity

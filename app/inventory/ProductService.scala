@@ -2,30 +2,24 @@ package inventory
 
 import java.sql.Connection
 import javax.inject.Inject
-
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO}
 import inventory.entities.{Attribute, Product, ProductAttribute}
 import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
+import inventory.validators.{DomainError, InvalidHash}
 import play.api.db.Database
-
 import scala.util.{Failure, Random, Try}
 
 final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, db: Database) {
 
-  def updateProduct(productId: Long, form: EditProductForm): Try[String] =
-    readRepository.get(productId, "en")
-      .filter(product => product.hash == form.hash)
+  def updateProduct(productId: Long, form: EditProductForm): Either[DomainError, String] =
+    readRepository
+      .get(productId, "en")
       .map(product => {
-        Try {
-          println(s"${form.hash} == ${product.hash}")
-          val spa: Seq[ProductAttributeDTO] = attributesPairsToDtos(form.attributes)
-          val dto = form.toDto.copy(attributes = spa)
-
-          writeRepository.updateProduct(product, dto)
-        }
-      })
-      .getOrElse(Failure(new RuntimeException("Wrong version")))
+        form
+          .validate(readRepository)
+          .map(dto => writeRepository.updateProduct(product, dto))
+      }).getOrElse(Left(InvalidHash))
 
   def cloneProduct(productId: Long): Try[Product] = {
     // Fetch the product's info
@@ -84,16 +78,4 @@ final class ProductService @Inject()(readRepository: ProductRepository, writeRep
       writeRepository.createProductAttribute(productId, dto)
     }
   }
-
-  private def attributesPairsToDtos(pairs: Seq[AttributeIdValuePair]): Seq[ProductAttributeDTO] =
-    for {
-      pair <- pairs
-      attribute <- readRepository.getAttribute(pair.id, "en")
-    } yield ProductAttributeDTO(
-      attribute.id,
-      pair.value,
-      None,
-      pair.isEditable,
-      attribute.inputType == "select"
-    )
 }

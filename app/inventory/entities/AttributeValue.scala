@@ -15,5 +15,4 @@ case class AttributeValue(
                            description: Description,
                            createdAt: LocalDateTime = LocalDateTime.now,
                            updatedAt: Option[LocalDateTime] = None
-                         ) extends TimestampEntity {
-}
+                         ) extends TimestampEntity

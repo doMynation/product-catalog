@@ -6,6 +6,4 @@ object AttributeCategory {
   implicit val attributeWrites: Writes[AttributeCategory] = Json.writes[AttributeCategory]
 }
 
-case class AttributeCategory(id: Long, description: Description) {
-
-}
+case class AttributeCategory(id: Long, description: Description)

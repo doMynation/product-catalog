@@ -90,7 +90,12 @@ class StoreProductController @Inject()(authAction: AuthenticatedAction, cc: Cont
     val chosenLang = lang.getOrElse("en")
 
     productRepository.search(sr, chosenLang, inc).map { searchResult =>
-      Ok(Json.toJson(ApiResponse(searchResult.results, Map("count" -> searchResult.totalCount.toString))))
+      Ok(Json.toJson(
+        ApiResponse(searchResult.results, Map(
+          "count" -> searchResult.totalCount.toString,
+          "query" -> req.rawQueryString
+        ))
+      ))
     } recover {
       case t: Throwable =>
         println(t)

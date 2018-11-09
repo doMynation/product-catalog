@@ -51,6 +51,10 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     deleteProductAttributes(product.id)
     dto.attributes.foreach(createProductAttribute(product.id, _))
 
+    // Handle children
+    deleteProductChildren(product.id)
+    dto.children.foreach(createProductChild(product.id, _))
+
     newHash
   }
 
@@ -107,6 +111,15 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
   def deleteProductAttributes(productId: Long)(implicit connection: Connection): Boolean = {
     val affectedRows = DatabaseHelper.executeUpdate(
       "DELETE FROM inv_product_attributes WHERE product_id = @productId",
+      Map("productId" -> productId.toString)
+    )(connection)
+
+    affectedRows > 0
+  }
+
+  def deleteProductChildren(productId: Long)(implicit connection: Connection): Boolean = {
+    val affectedRows = DatabaseHelper.executeUpdate(
+      "DELETE FROM inv_product_compositions WHERE product_id = @productId",
       Map("productId" -> productId.toString)
     )(connection)
 

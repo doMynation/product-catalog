@@ -533,6 +533,28 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     ))(hydrateProductAttribute)(conn)
   }
 
+  def getProductDepartment(departmentId: Long, lang: String): Option[ProductDepartment] =
+    db.withConnection { conn =>
+      val sql =
+        """
+        SELECT
+          d.*,
+          COALESCE(t.label, dt.label) AS `d.name`,
+          COALESCE(t.short_description, dt.short_description) AS `d.short_description`,
+          COALESCE(t.long_description, dt.long_description) AS `d.long_description`
+        FROM inv_departments d
+        JOIN translations dt ON dt.description_id = d.description_id AND dt.is_default = 1
+        LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
+        WHERE d.id = @departmentId
+      """
+      val params = Map(
+        "departmentId" -> departmentId.toString,
+        "langId" -> Lang.fromString(lang, 1).toString
+      )
+
+      DatabaseHelper.fetchOne(sql, params)(hydrateProductDepartment)(conn)
+    }
+
   def getProductCategory(id: Long, lang: String): Option[ProductCategory] = db.withConnection { conn =>
     val sql =
       """
@@ -637,7 +659,14 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   }
 
   private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
-    ProductChild(product, rs.getString("type"), rs.getLong("quantity"), rs.getBoolean("is_visible"), rs.getBoolean("is_compiled"))
+    ProductChild(
+      rs.getLong("id"),
+      product,
+      rs.getString("type"),
+      rs.getLong("quantity"),
+      rs.getBoolean("is_visible"),
+      rs.getBoolean("is_compiled")
+    )
 
   private def hydrateAttributeValue(rs: ResultSet): AttributeValue = {
     val ts = rs.getTimestamp("modification_date")
@@ -748,7 +777,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   }
 
   private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { conn =>
-    val sql = "SELECT sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
+    val sql = "SELECT id, sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
 
     DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
       val childProductId = rs.getLong("sub_product_id")

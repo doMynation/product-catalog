@@ -18,6 +18,7 @@ object ProductChild extends DTOMappable[ProductChild, ProductChildDTO] {
 }
 
 case class ProductChild(
+                         id: Long,
                          product: Product,
                          childType: String,
                          quantity: Long,

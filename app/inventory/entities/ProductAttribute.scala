@@ -24,5 +24,4 @@ case class ProductAttribute(
                              valueId: Option[Long] = None,
                              valueSku: Option[String] = None,
                              isEditable: Boolean,
-                             isReference: Boolean
-                           )
+                             isReference: Boolean)

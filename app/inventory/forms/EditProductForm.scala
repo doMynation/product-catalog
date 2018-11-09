@@ -2,9 +2,11 @@ package inventory.forms
 
 import java.time.LocalDateTime
 import inventory.dtos._
+import inventory.repositories.ProductRepository
+import inventory.validators.{DomainError, EditProductValidator}
 import shared.dtos.TranslationDTO
-import play.api.libs.json.Reads
 import play.api.libs.json._
+import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
 import shared.DTOMappable
 
@@ -31,7 +33,7 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
       (__ \ "tags").read[List[String]] and
       Reads.pure(List.empty[ProductStorePriceDTO]) and
       (__ \ "attributes").read[List[AttributeIdValuePair]] and
-      Reads.pure(List.empty[ProductChildDTO]) and
+      (__ \ "children").read[List[ProductChildDTO]] and
       Reads.pure(List.empty[ProductRuleDTO]) and
       Reads.pure(List.empty[ProductAssemblyPartDTO]) and
       Reads.pure(LocalDateTime.now) and
@@ -53,7 +55,8 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
       isEnabled = entity.isEnabled,
       metadata = entity.metadata,
       updatedAt = Some(LocalDateTime.now),
-      translations = entity.translations
+      translations = entity.translations,
+      children = entity.children
     )
 }
 
@@ -75,5 +78,8 @@ case class EditProductForm(
                             updatedAt: Option[LocalDateTime] = None,
                             metadata: Map[String, String] = Map(),
                             isCustom: Boolean = false,
-                            isEnabled: Boolean = true)
+                            isEnabled: Boolean = true) {
+
+  def validate(repository: ProductRepository): Either[DomainError, ProductDTO] = EditProductValidator.validate(this, repository)
+}
 

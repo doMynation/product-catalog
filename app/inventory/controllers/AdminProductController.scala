@@ -27,7 +27,7 @@ class AdminProductController @Inject()(
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   def test = Action {
     //    val resp = ApiResponse((584954, "name", BigDecimal(4.5)))
-    val resp = ApiResponse(Json.obj("hash" -> "hgoewjgoiew"))
+    val resp = ApiResponse(Json.obj("hash" -> "hgoewjgoiew", "num" -> 38.43))
     Ok(Json.toJson(resp))
   }
 
@@ -101,8 +101,8 @@ class AdminProductController @Inject()(
 
     data map { form =>
       productService.updateProduct(productId, form) match {
-        case Success(newHash) => Ok(Json.toJson(ApiResponse(Json.obj("hash" -> newHash))))
-        case _ => BadRequest(Json.toJson(ApiError(ApiError.INVALID_CHECKSUM, "This version is outdated.")))
+        case Right(newHash) => Ok(Json.toJson(ApiResponse(Json.obj("hash" -> newHash))))
+        case Left(error) => BadRequest(Json.toJson(ApiError(error.code, error.errorMessage)))
       }
     } getOrElse {
       BadRequest("Invalid parameters")
