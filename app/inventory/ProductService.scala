@@ -12,14 +12,14 @@ import scala.util.{Failure, Random, Try}
 
 final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, db: Database) {
 
-  def updateProduct(productId: Long, form: EditProductForm): Either[DomainError, String] =
+  def updateProduct(productId: Long, form: EditProductForm): Either[DomainError, Unit] =
     readRepository
       .get(productId, "en")
-      .map(product => {
-        form
-          .validate(readRepository)
-          .map(dto => writeRepository.updateProduct(product, dto))
-      }).getOrElse(Left(InvalidHash))
+      .filter(_.hash == form.hash)
+      .map(product => form
+        .validate(readRepository)
+        .map(dto => writeRepository.updateProduct(product, dto))
+      ).getOrElse(Left(InvalidHash))
 
   def cloneProduct(productId: Long): Try[Product] = {
     // Fetch the product's info

@@ -376,14 +376,21 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       }
 
       val allowedSortFields = Map(
+        "id" -> "p.id",
         "sku" -> "sku",
         "name" -> "`p.name`",
+        "price" -> "price",
         "shortDescription" -> "`p.short_description`",
         "longDescription" -> "`p.long_description`",
         "isCustom" -> "p.is_custom",
+        "category" -> "p.category_id",
       )
 
-      val sortField = sr.sortField.flatMap(allowedSortFields.get).getOrElse("sku")
+      // Default sort to ID in descending order
+      val (sortField, sortOrder) = sr.sortField
+        .flatMap(allowedSortFields.get)
+        .map(field => (field, sr.sortOrder))
+        .getOrElse(("p.id", SearchRequest.SORT_DESC))
 
       val fetchSql =
         s"""
@@ -414,7 +421,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
               ${joins.mkString(" ")}
               WHERE ${wheres.mkString(" AND ")}
               HAVING ${havings.mkString(" AND ")}
-              ORDER BY $sortField ${sr.sortOrder}
+              ORDER BY $sortField ${sortOrder}
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
 

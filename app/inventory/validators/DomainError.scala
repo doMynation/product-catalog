@@ -49,3 +49,7 @@ case object InvalidChildren extends DomainError {
   override val errorMessage = "All children must exist and have valid values.";
   override val code = "INVALID_CHILDREN"
 }
+
+case class InvalidMetadata(code: String) extends DomainError {
+  override val errorMessage = s"Metadata ${code} is not valid.";
+}

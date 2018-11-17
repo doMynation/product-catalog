@@ -23,13 +23,13 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
   // Type alias
   type Product = inventory.entities.Product
 
-  def updateProduct(product: Product, dto: ProductDTO): String = db.withTransaction { implicit conn =>
+  def updateProduct(product: Product, dto: ProductDTO): Unit = db.withTransaction { implicit conn =>
     val newHash = UUID.randomUUID().toString
     val baseFields: Map[String, String] = Map(
       "hash" -> newHash,
       "sku" -> dto.sku,
       "category_id" -> dto.categoryId.toString,
-      "department_id" -> dto.departmentId.map(_.toString).getOrElse(""),
+      "department_id" -> dto.departmentId.map(_.toString).getOrElse(null),
       "retail_price" -> dto.price.toString,
       "cost_price" -> dto.costPrice.toString,
       "tags" -> dto.tags.mkString(","),
@@ -54,8 +54,6 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     // Handle children
     deleteProductChildren(product.id)
     dto.children.foreach(createProductChild(product.id, _))
-
-    newHash
   }
 
   def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Future[Boolean] = Future {

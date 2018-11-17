@@ -22,20 +22,29 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
     }
   }
 
+  val emptyStringToNullReader: Reads[Option[Long]] = new Reads[Option[Long]] {
+    override def reads(json: JsValue): JsResult[Option[Long]] = JsSuccess {
+      json match {
+        case s: JsNumber => Some(s.as[Long])
+        case _ => Option.empty[Long]
+      }
+    }
+  }
+
   implicit val reads: Reads[EditProductForm] = (
     (__ \ "hash").read[String] and
       (__ \ "sku").read[String] and
       (__ \ "categoryId").read[Long] and
-      (__ \ "departmentId").readNullable[Long] and
+      (__ \ "departmentId").read[Option[Long]](emptyStringToNullReader) and
       (__ \ "translations").read[List[TranslationDTO]] and
       (__ \ "price").read[Double] and
       (__ \ "costPrice").read[Double] and
       (__ \ "tags").read[List[String]] and
-      Reads.pure(List.empty[ProductStorePriceDTO]) and
+      Reads.pure(List.empty[ProductStorePriceDTO]) and // @todo
       (__ \ "attributes").read[List[AttributeIdValuePair]] and
       (__ \ "children").read[List[ProductChildDTO]] and
-      Reads.pure(List.empty[ProductRuleDTO]) and
-      Reads.pure(List.empty[ProductAssemblyPartDTO]) and
+      Reads.pure(List.empty[ProductRuleDTO]) and // @todo
+      Reads.pure(List.empty[ProductAssemblyPartDTO]) and // @todo
       Reads.pure(LocalDateTime.now) and
       Reads.pure(Some(LocalDateTime.now)) and
       (__ \ "metadata").read[Map[String, String]](nullToStringMapReader) and

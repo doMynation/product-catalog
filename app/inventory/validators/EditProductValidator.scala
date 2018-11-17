@@ -8,17 +8,13 @@ import cats.syntax.traverse._
 import cats.instances.either._
 import cats.instances.list._
 
-sealed trait EditProductValidator {
+object EditProductValidator {
   //  storePrices: Seq[ProductStorePriceDTO] = List(),
-  //  children: Seq[ProductChildDTO] = List(),
   //  rules: Seq[ProductRuleDTO] = List(),
   //  assemblyParts: Seq[ProductAssemblyPartDTO] = List(),
-  //  metadata: Map[String, String] = Map(),
-  //  isCustom: Boolean = false,
-  //  isEnabled: Boolean = true)
 
   def validateHash(value: String): Either[DomainError, String] =
-    Either.cond(value.length > 10, value, InvalidHash)
+    Either.cond(value == "PRISTINE" || value.length > 10, value, InvalidHash)
 
   def validateSku(value: String): Either[DomainError, String] =
     Either.cond(value.matches("^[\\w-]+$"), value, InvalidSku)
@@ -87,6 +83,15 @@ sealed trait EditProductValidator {
     )
   }
 
+  def validateMetadata(value: Map[String, String]): Either[DomainError, Map[String, String]] = {
+    // `isKit`
+    val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata(""))
+
+    for {
+      _ <- isKit
+    } yield value
+  }
+
   def validate(form: EditProductForm, pr: ProductRepository): Either[DomainError, ProductDTO] = {
     for {
       _ <- validateHash(form.hash)
@@ -99,8 +104,7 @@ sealed trait EditProductValidator {
       _ <- validateTags(form.tags)
       attributeDtos <- validateAttributes(form.attributes.toList, pr)
       _ <- validateChildren(form.children.toList, pr)
+      _ <- validateMetadata(form.metadata)
     } yield form.toDto.copy(attributes = attributeDtos)
   }
 }
-
-object EditProductValidator extends EditProductValidator

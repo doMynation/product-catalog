@@ -10,8 +10,9 @@ import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
 import play.api.Logger
 import play.api.db.Database
-import play.api.libs.json.Json
+import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc.{AbstractController, ControllerComponents}
+
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -97,15 +98,17 @@ class AdminProductController @Inject()(
   }
 
   def update(productId: Long) = Action(parse.json) { req =>
-    val data = (req.body \ "fields").asOpt[EditProductForm]
+    val data = (req.body \ "fields").validate[EditProductForm]
 
-    data map { form =>
-      productService.updateProduct(productId, form) match {
-        case Right(newHash) => Ok(Json.toJson(ApiResponse(Json.obj("hash" -> newHash))))
-        case Left(error) => BadRequest(Json.toJson(ApiError(error.code, error.errorMessage)))
-      }
-    } getOrElse {
-      BadRequest("Invalid parameters")
+    data match {
+      case form: JsSuccess[EditProductForm] =>
+        productService.updateProduct(productId, form.get) match {
+          case Left(error) => BadRequest(Json.toJson(ApiError(error.code, error.errorMessage)))
+          case _ => Ok(Json.toJson(ApiResponse.empty))
+        }
+      case e: JsError =>
+        println(e)
+        BadRequest("Invalid parameters")
     }
   }
 
