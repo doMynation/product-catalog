@@ -1,18 +1,18 @@
 package inventory.controllers
 
 import javax.inject.Inject
-
+import controllers.Assets
 import infrastructure.{ApiError, ApiResponse}
 import inventory.ProductService
 import inventory.dtos.AttributeIdValuePair
 import inventory.entities.Admin.ProductEditData
 import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
-import play.api.Logger
+import inventory.util.FileUploader
+import play.api.{Configuration, Environment, Logger}
 import play.api.db.Database
 import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc.{AbstractController, ControllerComponents}
-
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -25,11 +25,29 @@ class AdminProductController @Inject()(
                                         productReadRepository: ProductRepository,
                                         productWriteRepository: ProductWriteRepository,
                                         productService: ProductService,
+                                        env: Environment,
+                                        config: Configuration,
+                                        assets: Assets,
+                                        uploader: FileUploader,
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   def test = Action {
     //    val resp = ApiResponse((584954, "name", BigDecimal(4.5)))
     val resp = ApiResponse(Json.obj("hash" -> "hgoewjgoiew", "num" -> 38.43))
     Ok(Json.toJson(resp))
+  }
+
+  def upload = Action(parse.multipartFormData) { request =>
+    request.body.file("filepond").map { file =>
+      val tf = uploader.upload(file)
+
+      // @todo: Eventually remove this.
+      // For some reason, the file isn't immediately available after moving it to the upload directly.
+      Thread.sleep(3000)
+
+      Ok(tf.getFileName.toString)
+    } getOrElse {
+      BadRequest("Didn't work")
+    }
   }
 
   def get(productId: Long, lang: Option[String]) = Action {

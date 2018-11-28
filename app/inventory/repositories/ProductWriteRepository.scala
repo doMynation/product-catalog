@@ -36,6 +36,7 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
       "is_custom" -> dto.isCustom.toInt.toString,
       "status" -> dto.isEnabled.toInt.toString,
       "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
+      "image_url" -> dto.metadata.getOrElse("imageUrl", ""),
       "mpn" -> dto.metadata.getOrElse("mpn", ""),
     ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
 

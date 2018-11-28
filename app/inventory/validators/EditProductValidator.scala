@@ -84,7 +84,6 @@ object EditProductValidator {
   }
 
   def validateMetadata(value: Map[String, String]): Either[DomainError, Map[String, String]] = {
-    // `isKit`
     val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata(""))
 
     for {

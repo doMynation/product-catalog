@@ -1,5 +1,6 @@
 # Map static resources from the /public folder to the /assets URL path
 GET           /assets/*file                                                                                                       controllers.Assets.versioned(path="/public", file: Asset)
+GET           /uploads/*file                                                                                                      controllers.Assets.versioned(path="/public/uploads", file: Asset)
 
 # Products
 GET           /products                                                                                                           inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
@@ -58,3 +59,4 @@ PATCH         /admin/products-bulk/disable                                      
 PATCH         /admin/products-bulk/+attributes                                                                                    inventory.controllers.AdminProductController.bulkAddAttributes()
 
 GET           /admin/test                                                                                                         inventory.controllers.AdminProductController.test()
+POST          /admin/upload                                                                                                       inventory.controllers.AdminProductController.upload()
