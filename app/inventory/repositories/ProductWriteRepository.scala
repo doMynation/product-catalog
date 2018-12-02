@@ -5,18 +5,15 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
-
 import infrastructure.DatabaseExecutionContext
 import inventory.dtos._
 import inventory.util.DatabaseHelper
 import play.api.db.Database
 import shared.dtos.TranslationDTO
 import shared.entities.Lang
-
 import scala.concurrent.{Await, Future}
 import scala.util.Try
 import shared.imports.implicits._
-
 import scala.concurrent.duration._
 
 final class ProductWriteRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -38,6 +35,8 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
       "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
       "image_url" -> dto.metadata.getOrElse("imageUrl", ""),
       "mpn" -> dto.metadata.getOrElse("mpn", ""),
+      "extrusion_template_id" -> dto.metadata.get("extrusionId").filterNot(_.isEmpty).getOrElse(null),
+      "sticker_template_id" -> dto.metadata.get("stickerId").filterNot(_.isEmpty).getOrElse(null)
     ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
 
     // Update product

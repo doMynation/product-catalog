@@ -2,11 +2,17 @@ package inventory.validators
 
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO, ProductChildDTO, ProductDTO}
 import inventory.forms.EditProductForm
-import inventory.repositories.ProductRepository
+import inventory.repositories.{MiscRepository, ProductRepository}
 import shared.dtos.TranslationDTO
+import cats.data.OptionT
 import cats.syntax.traverse._
 import cats.instances.either._
+import cats.instances.option._
 import cats.instances.list._
+import cats.instances._
+import scala.concurrent.duration._
+import scala.concurrent.Await
+import scala.util.{Success, Try}
 
 object EditProductValidator {
   //  storePrices: Seq[ProductStorePriceDTO] = List(),
@@ -83,15 +89,37 @@ object EditProductValidator {
     )
   }
 
-  def validateMetadata(value: Map[String, String]): Either[DomainError, Map[String, String]] = {
-    val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata(""))
+  def validateMetadata(value: Map[String, String], mr: MiscRepository): Either[DomainError, Map[String, String]] = {
+    val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata("isKit"))
+    val extrusionId = value.get("extrusionId").map(id => validateExtrusion(id, mr)).getOrElse(Right(value))
+    val stickerId = value.get("stickerId") match {
+      case Some("") => Right(value)
+      case Some(id) if !Set("1", "2").contains(id) => Left(InvalidMetadata("stickerId"))
+      case _ => Right(value)
+    }
 
     for {
       _ <- isKit
+      _ <- extrusionId
+      _ <- stickerId
     } yield value
   }
 
-  def validate(form: EditProductForm, pr: ProductRepository): Either[DomainError, ProductDTO] = {
+  def validateExtrusion(id: String, mr: MiscRepository): Either[DomainError, String] = {
+    if (id.trim.isEmpty) return Right(id)
+
+    val long = Try(id.toLong)
+
+    long match {
+      case Success(extrusionId) =>
+        val f = mr.getExtrusion(extrusionId)
+        val e = Await.result(f, 3 second)
+        e.map(_ => id).toRight(InvalidMetadata("extrusionId"))
+      case _ => Left(InvalidMetadata("extrusionId"))
+    }
+  }
+
+  def validate(form: EditProductForm, pr: ProductRepository, mr: MiscRepository): Either[DomainError, ProductDTO] = {
     for {
       _ <- validateHash(form.hash)
       _ <- validateSku(form.sku)
@@ -103,7 +131,7 @@ object EditProductValidator {
       _ <- validateTags(form.tags)
       attributeDtos <- validateAttributes(form.attributes.toList, pr)
       _ <- validateChildren(form.children.toList, pr)
-      _ <- validateMetadata(form.metadata)
+      _ <- validateMetadata(form.metadata, mr)
     } yield form.toDto.copy(attributes = attributeDtos)
   }
 }

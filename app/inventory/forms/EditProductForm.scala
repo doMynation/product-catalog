@@ -1,8 +1,9 @@
 package inventory.forms
 
 import java.time.LocalDateTime
+
 import inventory.dtos._
-import inventory.repositories.ProductRepository
+import inventory.repositories.{MiscRepository, ProductRepository}
 import inventory.validators.{DomainError, EditProductValidator}
 import shared.dtos.TranslationDTO
 import play.api.libs.json._
@@ -89,6 +90,6 @@ case class EditProductForm(
                             isCustom: Boolean = false,
                             isEnabled: Boolean = true) {
 
-  def validate(repository: ProductRepository): Either[DomainError, ProductDTO] = EditProductValidator.validate(this, repository)
+  def validate(productRepository: ProductRepository, miscRepository: MiscRepository): Either[DomainError, ProductDTO] = EditProductValidator.validate(this, productRepository, miscRepository)
 }
 

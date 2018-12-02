@@ -2,22 +2,24 @@ package inventory
 
 import java.sql.Connection
 import javax.inject.Inject
+
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO}
 import inventory.entities.{Attribute, Product, ProductAttribute}
 import inventory.forms.EditProductForm
-import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
+import inventory.repositories.{MiscRepository, ProductInclusions, ProductRepository, ProductWriteRepository}
 import inventory.validators.{DomainError, InvalidHash}
 import play.api.db.Database
+
 import scala.util.{Failure, Random, Try}
 
-final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, db: Database) {
+final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database) {
 
   def updateProduct(productId: Long, form: EditProductForm): Either[DomainError, Unit] =
     readRepository
       .get(productId, "en")
       .filter(_.hash == form.hash)
       .map(product => form
-        .validate(readRepository)
+        .validate(readRepository, miscRepository)
         .map(dto => writeRepository.updateProduct(product, dto))
       ).getOrElse(Left(InvalidHash))
 
