@@ -54,6 +54,10 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     // Handle children
     deleteProductChildren(product.id)
     dto.children.foreach(createProductChild(product.id, _))
+
+    // Persist rules
+    deleteProductRules(product.id)
+    dto.rules.foreach(createProductRule(product.id, _))
   }
 
   def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Future[Boolean] = Future {
@@ -118,6 +122,15 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
   def deleteProductChildren(productId: Long)(implicit connection: Connection): Boolean = {
     val affectedRows = DatabaseHelper.executeUpdate(
       "DELETE FROM inv_product_compositions WHERE product_id = @productId",
+      Map("productId" -> productId.toString)
+    )(connection)
+
+    affectedRows > 0
+  }
+
+  def deleteProductRules(productId: Long)(implicit connection: Connection): Boolean = {
+    val affectedRows = DatabaseHelper.executeUpdate(
+      "DELETE FROM inv_product_relations WHERE product_id = @productId",
       Map("productId" -> productId.toString)
     )(connection)
 

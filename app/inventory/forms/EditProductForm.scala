@@ -44,7 +44,7 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
       Reads.pure(List.empty[ProductStorePriceDTO]) and // @todo
       (__ \ "attributes").read[List[AttributeIdValuePair]] and
       (__ \ "children").read[List[ProductChildDTO]] and
-      Reads.pure(List.empty[ProductRuleDTO]) and // @todo
+      (__ \ "salesRules").read[List[ProductRuleDTO]] and
       Reads.pure(List.empty[ProductAssemblyPartDTO]) and // @todo
       Reads.pure(LocalDateTime.now) and
       Reads.pure(Some(LocalDateTime.now)) and
@@ -66,7 +66,8 @@ object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
       metadata = entity.metadata,
       updatedAt = Some(LocalDateTime.now),
       translations = entity.translations,
-      children = entity.children
+      children = entity.children,
+      rules = entity.rules
     )
 }
 
