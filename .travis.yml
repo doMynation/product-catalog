@@ -1,11 +1,11 @@
 language: scala
-scala: 2.12.2
+scala:
+  - 2.12.2
 jdk: oraclejdk8
 services:
   - mysql
 sudo: false
 before_install:
-  - mysql -u root -e
   - mysql -u root -e 'CREATE DATABASE IF NOT EXISTS inventory;'
   - mysql -u root -e inventory < database-schema.sql
 #  - sudo mysql -e "use mysql; update user set authentication_string=PASSWORD('new_password') where User='root'; update user set plugin='mysql_native_password';FLUSH PRIVILEGES;"
