@@ -15,6 +15,11 @@ case object InvalidSku extends DomainError {
   override val code = "INVALID_SKU"
 }
 
+case object InvalidProductId extends DomainError {
+  override val errorMessage = "The product ID is invalid."
+  override val code = "INVALID_PRODUCT_ID"
+}
+
 case object InvalidCategoryId extends DomainError {
   override val errorMessage = "The category doesn't exist."
   override val code = "INVALID_CATEGORY"
@@ -50,6 +55,27 @@ case object InvalidChildren extends DomainError {
   override val code = "INVALID_CHILDREN"
 }
 
+case object InvalidChildType extends DomainError {
+  override val errorMessage = "The child type is invalid";
+  override val code = "INVALID_CHILD_TYPE"
+}
+
 case class InvalidMetadata(code: String) extends DomainError {
   override val errorMessage = s"Metadata ${code} is not valid.";
 }
+
+case object InvalidSalesRuleType extends DomainError {
+  override val errorMessage = s"Invalid sales rule type";
+  override val code = "INVALID_SALES_RULE_TYPE"
+}
+
+case object InvalidQuantity extends DomainError {
+  override val errorMessage = s"The quantity must be greater than 0.";
+  override val code = "INVALID_QUANTITY"
+}
+
+case class ProductNotFound(productId: Long) extends DomainError {
+  override val errorMessage = s"Product ID $productId not found";
+  override val code = "PRODUCT_NOT_FOUND"
+}
+

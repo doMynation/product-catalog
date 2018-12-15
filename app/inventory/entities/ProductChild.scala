@@ -5,6 +5,9 @@ import play.api.libs.json._
 import shared.DTOMappable
 
 object ProductChild extends DTOMappable[ProductChild, ProductChildDTO] {
+  val TYPE_COMPOSED = "composed" // A parent is "composed" of this child
+  val TYPE_USED = "uses" // This child is "used" by a parent
+
   implicit val productChildWrites: Writes[ProductChild] = Json.writes[ProductChild]
 
   override implicit def toDto(entity: ProductChild): ProductChildDTO =

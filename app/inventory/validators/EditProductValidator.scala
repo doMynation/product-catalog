@@ -1,6 +1,6 @@
 package inventory.validators
 
-import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO, ProductChildDTO, ProductDTO}
+import inventory.dtos._
 import inventory.forms.EditProductForm
 import inventory.repositories.{MiscRepository, ProductRepository}
 import shared.dtos.TranslationDTO
@@ -10,6 +10,7 @@ import cats.instances.either._
 import cats.instances.option._
 import cats.instances.list._
 import cats.instances._
+import inventory.entities.RuleTypes
 import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.util.{Success, Try}
@@ -78,16 +79,22 @@ object EditProductValidator {
     )
   }
 
-  def validateChildren(value: List[ProductChildDTO], productRepository: ProductRepository): Either[DomainError, List[ProductChildDTO]] = {
+  def validateChildren(value: List[ProductChildDTO], pr: ProductRepository): Either[DomainError, List[ProductChildDTO]] = {
     value.traverse(child =>
-      // @todo: Validate childType
-      if (child.quantity < 1) Left(InvalidChildren)
-      else productRepository
-        .get(child.productId, "en")
-        .map(s => child)
-        .toRight(InvalidChildren)
+      for {
+        _ <- child.validate
+        _ <- pr.get(child.productId, "en").toRight(ProductNotFound(child.productId))
+      } yield child
     )
   }
+
+  def validateSalesRules(value: List[ProductRuleDTO], pr: ProductRepository): Either[DomainError, List[ProductRuleDTO]] =
+    value.traverse { rule =>
+      for {
+        _ <- rule.validate
+        _ <- pr.get(rule.productId, "en").toRight(ProductNotFound(rule.productId))
+      } yield rule
+    }
 
   def validateMetadata(value: Map[String, String], mr: MiscRepository): Either[DomainError, Map[String, String]] = {
     val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata("isKit"))
@@ -132,6 +139,7 @@ object EditProductValidator {
       attributeDtos <- validateAttributes(form.attributes.toList, pr)
       _ <- validateChildren(form.children.toList, pr)
       _ <- validateMetadata(form.metadata, mr)
+      _ <- validateSalesRules(form.rules.toList, pr)
     } yield form.toDto.copy(attributes = attributeDtos)
   }
 }
