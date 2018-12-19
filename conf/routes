@@ -2,6 +2,12 @@
 GET           /assets/*file                                                                                                       controllers.Assets.versioned(path="/public", file: Asset)
 GET           /uploads/*file                                                                                                      controllers.Assets.versioned(path="/public/uploads", file: Asset)
 
+# Auth
+POST          /auth                                                                                                               authentication.controllers.AuthController.login()
+GET           /auth/check                                                                                                         authentication.controllers.AuthController.check()
+GET           /auth/logout                                                                                                        authentication.controllers.AuthController.logout()
+GET           /auth/signup                                                                                                        authentication.controllers.AuthController.signup(username: String, password: String)
+
 # Miscellaneous
 GET           /extrusions/all                                                                                                     inventory.controllers.MiscController.getExtrusions()
 

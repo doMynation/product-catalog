@@ -91,6 +91,7 @@ case class EditProductForm(
                             isCustom: Boolean = false,
                             isEnabled: Boolean = true) {
 
-  def validate(productRepository: ProductRepository, miscRepository: MiscRepository): Either[DomainError, ProductDTO] = EditProductValidator.validate(this, productRepository, miscRepository)
+  def validate(productRepository: ProductRepository, miscRepository: MiscRepository): Either[DomainError, ProductDTO] =
+    EditProductValidator.validate(this, productRepository, miscRepository)
 }
 

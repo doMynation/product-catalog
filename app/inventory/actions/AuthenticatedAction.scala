@@ -9,7 +9,6 @@ import inventory.entities.Store
 import inventory.requestAttributes.Attrs
 import play.api.Logger
 import play.api.db.Database
-
 import scala.concurrent.{Await, ExecutionContext, Future, TimeoutException}
 import scala.concurrent.duration._
 import play.api.mvc.Results._
