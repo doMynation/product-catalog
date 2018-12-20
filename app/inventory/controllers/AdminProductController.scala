@@ -1,6 +1,8 @@
 package inventory.controllers
 
 import javax.inject.Inject
+
+import authentication.actions.AuthenticatedAction
 import controllers.Assets
 import infrastructure.{ApiError, ApiResponse}
 import inventory.ProductService
@@ -29,14 +31,10 @@ class AdminProductController @Inject()(
                                         config: Configuration,
                                         assets: Assets,
                                         uploader: FileUploader,
+                                        authAction: AuthenticatedAction
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
-  def test = Action {
-    //    val resp = ApiResponse((584954, "name", BigDecimal(4.5)))
-    val resp = ApiResponse(Json.obj("hash" -> "hgoewjgoiew", "num" -> 38.43))
-    Ok(Json.toJson(resp))
-  }
 
-  def upload = Action(parse.multipartFormData) { request =>
+  def upload = authAction(parse.multipartFormData) { request =>
     request.body.file("filepond").map { file =>
       val tf = uploader.upload(file)
 
@@ -50,7 +48,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def get(productId: Long, lang: Option[String]) = Action {
+  def get(productId: Long, lang: Option[String]) = authAction {
     val chosenLang = lang.getOrElse("en")
     val includes = List(ProductInclusions.ATTRIBUTES, ProductInclusions.CATEGORY, ProductInclusions.CHILDREN, ProductInclusions.RULES)
 
@@ -70,7 +68,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def delete(productId: Long) = Action.async {
+  def delete(productId: Long) = authAction.async {
     productWriteRepository.deleteProduct(productId).map { _ =>
       Ok
     } recover {
@@ -80,7 +78,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def enable(productId: Long) = Action.async {
+  def enable(productId: Long) = authAction.async {
     val future = productWriteRepository.updateProductFields(productId, Map("status" -> "1"))
 
     future.map { _ =>
@@ -92,7 +90,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def disable(productId: Long) = Action.async {
+  def disable(productId: Long) = authAction.async {
     val future = productWriteRepository.updateProductFields(productId, Map("status" -> "0"))
 
     future.map { _ =>
@@ -104,7 +102,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def duplicate(productId: Long) = Action {
+  def duplicate(productId: Long) = authAction {
     val productTry = productService.cloneProduct(productId)
 
     productTry match {
@@ -115,7 +113,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def update(productId: Long) = Action(parse.json) { req =>
+  def update(productId: Long) = authAction(parse.json) { req =>
     val data = (req.body \ "fields").validate[EditProductForm]
 
     data match {
@@ -130,7 +128,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def bulkEnable() = Action.async(parse.json) { req =>
+  def bulkEnable() = authAction.async(parse.json) { req =>
     val json = req.body
     val po = (json \ "productIds").asOpt[Seq[Long]]
 
@@ -148,7 +146,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def bulkDisable() = Action.async(parse.json) { req =>
+  def bulkDisable() = authAction.async(parse.json) { req =>
     val json = req.body
     val value = (json \ "productIds").asOpt[Seq[Long]]
 
@@ -166,7 +164,7 @@ class AdminProductController @Inject()(
     }
   }
 
-  def bulkAddAttributes = Action(parse.json) { req =>
+  def bulkAddAttributes = authAction(parse.json) { req =>
     val json = req.body
     val productIds = (json \ "productIds").asOpt[List[Int]]
     val attributes = (json \ "attributes").asOpt[List[AttributeIdValuePair]]

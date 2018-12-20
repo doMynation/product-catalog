@@ -67,5 +67,4 @@ PATCH         /admin/products-bulk/enable                                       
 PATCH         /admin/products-bulk/disable                                                                                        inventory.controllers.AdminProductController.bulkDisable()
 PATCH         /admin/products-bulk/+attributes                                                                                    inventory.controllers.AdminProductController.bulkAddAttributes()
 
-GET           /admin/test                                                                                                         inventory.controllers.AdminProductController.test()
 POST          /admin/upload                                                                                                       inventory.controllers.AdminProductController.upload()
