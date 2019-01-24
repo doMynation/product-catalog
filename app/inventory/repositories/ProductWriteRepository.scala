@@ -40,24 +40,24 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
     ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
 
     // Update product
-    val f = updateProductFields(product.id, baseFields)
-    val isSuccess = Await.result(f, 5.second)
+    updateProductFields(product.id, baseFields).foreach { _ =>
+      println("inside future")
+      // Handle attributes
+      deleteTranslations(product.descriptionId)
+      dto.translations.foreach(createTranslation(product.descriptionId, _))
 
-    // Handle attributes
-    deleteTranslations(product.descriptionId)
-    dto.translations.foreach(createTranslation(product.descriptionId, _))
+      // Handle attributes
+      deleteProductAttributes(product.id)
+      dto.attributes.foreach(createProductAttribute(product.id, _))
 
-    // Handle attributes
-    deleteProductAttributes(product.id)
-    dto.attributes.foreach(createProductAttribute(product.id, _))
+      // Handle children
+      deleteProductChildren(product.id)
+      dto.children.foreach(createProductChild(product.id, _))
 
-    // Handle children
-    deleteProductChildren(product.id)
-    dto.children.foreach(createProductChild(product.id, _))
-
-    // Persist rules
-    deleteProductRules(product.id)
-    dto.rules.foreach(createProductRule(product.id, _))
+      // Persist rules
+      deleteProductRules(product.id)
+      dto.rules.foreach(createProductRule(product.id, _))
+    }
   }
 
   def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Future[Boolean] = Future {
@@ -288,5 +288,21 @@ final class ProductWriteRepository @Inject()(db: Database)(implicit ec: Database
       ) ++ storePrice.price.map(s => Map("price" -> s.toString)).getOrElse(Map())
       )(conn)
     }
+  }
+
+  def createDepartment(dto: ProductDepartmentDTO): Future[Long] = Future {
+    val task = (conn: Connection) => {
+      val dit = createDescription(dto.translations)(conn)
+      val nextDisplayOrder = DatabaseHelper.fetchColumn[Int]("SELECT MAX(display_order) FROM inv_departments")(conn)
+
+      DatabaseHelper.insert("inv_departments", Map(
+        "description_id" -> dit.get.toString, // @todo unsafe, fix this
+        "code" -> dto.code,
+        "display_order" -> nextDisplayOrder.get.toString, // @todo unsafe, fix this
+        "creation_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss"))
+      ))(conn)
+    }
+
+    db.withConnection(task)
   }
 }

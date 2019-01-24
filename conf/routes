@@ -2,26 +2,20 @@
 GET           /assets/*file                                                                                                       controllers.Assets.versioned(path="/public", file: Asset)
 GET           /uploads/*file                                                                                                      controllers.Assets.versioned(path="/public/uploads", file: Asset)
 
-# Auth
-POST          /auth                                                                                                               authentication.controllers.AuthController.login()
-GET           /auth/check                                                                                                         authentication.controllers.AuthController.check()
-GET           /auth/logout                                                                                                        authentication.controllers.AuthController.logout()
-GET           /auth/signup                                                                                                        authentication.controllers.AuthController.signup(username: String, password: String)
-
-# Miscellaneous
-GET           /extrusions/all                                                                                                     inventory.controllers.MiscController.getExtrusions()
-
 # Products
 GET           /products                                                                                                           inventory.controllers.ProductController.search(lang: Option[String], include: Option[String])
 GET           /products/$id<[0-9]+>                                                                                               inventory.controllers.ProductController.get(id: Long, lang: Option[String], include: Option[String])
 GET           /products/$ids<[0-9]+,+[0-9,]*>                                                                                     inventory.controllers.ProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
 GET           /products/$sku<[a-zA-Z0-9-]+>                                                                                       inventory.controllers.ProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
 GET           /products/:productId/rules                                                                                          inventory.controllers.ProductController.getRules(productId: Long, lang: Option[String])
-GET           /rules/:ruleId                                                                                                      inventory.controllers.ProductController.getRule(ruleId: Long, lang: Option[String])
 
+# Product categories
 GET           /productCategories/all                                                                                              inventory.controllers.ProductController.getCategories(lang: Option[String])
 GET           /productCategories/$id<[0-9]+>                                                                                      inventory.controllers.ProductController.getCategory(id: Long, lang: Option[String])
 
+# Miscellaneous
+GET           /rules/:ruleId                                                                                                      inventory.controllers.ProductController.getRule(ruleId: Long, lang: Option[String])
+GET           /extrusions/all                                                                                                     inventory.controllers.MiscController.getExtrusions()
 GET           /productDepartments/all                                                                                             inventory.controllers.ProductController.getDepartments(lang: Option[String])
 GET           /attributes/all                                                                                                     inventory.controllers.ProductController.getAttributes(lang: Option[String])
 
@@ -54,6 +48,17 @@ GET           /stores/:storeId/quotes                                           
 GET           /stores/:storeId/quotes/$quoteId<[0-9]+>                                                                            sales.controllers.StoreQuoteController.get(quoteId: Long, storeId: Long, lang: Option[String], include: Option[String])
 GET           /stores/:storeId/quotes/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}>          sales.controllers.StoreQuoteController.getByUUID(uuid: String, storeId: Long, lang: Option[String], include: Option[String])
 
+# Auth
+POST          /auth                                                                                                               authentication.controllers.AuthController.login()
+GET           /auth/check                                                                                                         authentication.controllers.AuthController.check()
+GET           /auth/logout                                                                                                        authentication.controllers.AuthController.logout()
+GET           /auth/signup                                                                                                        authentication.controllers.AuthController.signup(username: String, password: String)
+
+# Passwords
+GET           /password/:token                                                                                                    authentication.controllers.AuthController.verifyPasswordToken(token: String)
+PUT           /password/reset                                                                                                     authentication.controllers.AuthController.resetPassword()
+PATCH         /password                                                                                                           authentication.controllers.AuthController.changePassword()
+
 # Admin
 GET           /admin/products/$id<[0-9]+>                                                                                         inventory.controllers.AdminProductController.get(id: Long, lang: Option[String])
 DELETE        /admin/products/$id<[0-9]+>                                                                                         inventory.controllers.AdminProductController.delete(id: Long)
@@ -68,3 +73,4 @@ PATCH         /admin/products-bulk/disable                                      
 PATCH         /admin/products-bulk/+attributes                                                                                    inventory.controllers.AdminProductController.bulkAddAttributes()
 
 POST          /admin/upload                                                                                                       inventory.controllers.AdminProductController.upload()
+POST          /admin/departments                                                                                                  inventory.controllers.AdminProductController.createDepartment()

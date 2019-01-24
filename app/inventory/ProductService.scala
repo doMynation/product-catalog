@@ -2,14 +2,12 @@ package inventory
 
 import java.sql.Connection
 import javax.inject.Inject
-
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO}
 import inventory.entities.{Attribute, Product, ProductAttribute}
 import inventory.forms.EditProductForm
 import inventory.repositories.{MiscRepository, ProductInclusions, ProductRepository, ProductWriteRepository}
 import inventory.validators.{DomainError, InvalidHash}
 import play.api.db.Database
-
 import scala.util.{Failure, Random, Try}
 
 final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database) {

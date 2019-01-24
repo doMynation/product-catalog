@@ -1,38 +1,55 @@
 package inventory.controllers
 
 import javax.inject.Inject
-
 import authentication.actions.AuthenticatedAction
-import controllers.Assets
 import infrastructure.{ApiError, ApiResponse}
 import inventory.ProductService
-import inventory.dtos.AttributeIdValuePair
+import inventory.dtos.{AttributeIdValuePair, ProductDepartmentDTO}
 import inventory.entities.Admin.ProductEditData
+import inventory.entities.ProductDepartment
 import inventory.forms.EditProductForm
 import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
 import inventory.util.FileUploader
-import play.api.{Configuration, Environment, Logger}
+import inventory.validators.{DepartmentNotFound, DomainError, InvalidPayload}
+import play.api.{Logger}
 import play.api.db.Database
 import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc.{AbstractController, ControllerComponents}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
+import cats.data.EitherT
+import cats.implicits._
 
 /**
   * Controller for the admin backend of the product catalog.
   */
 class AdminProductController @Inject()(
                                         cc: ControllerComponents,
-                                        db: Database,
                                         productReadRepository: ProductRepository,
                                         productWriteRepository: ProductWriteRepository,
                                         productService: ProductService,
-                                        env: Environment,
-                                        config: Configuration,
-                                        assets: Assets,
                                         uploader: FileUploader,
                                         authAction: AuthenticatedAction
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+
+  def createDepartment = authAction.async(parse.json) { req =>
+    val json = req.body
+
+    val program: EitherT[Future, DomainError, ProductDepartment] = for {
+      dto <- EitherT.fromEither[Future](json.asOpt[ProductDepartmentDTO].toRight(InvalidPayload))
+      _ <- EitherT.fromEither[Future](dto.validate)
+      deptId <- EitherT.right[DomainError](productWriteRepository.createDepartment(dto))
+      dept <- EitherT.fromEither[Future](
+        productReadRepository
+          .getProductDepartment(deptId, "en")
+          .toRight[DomainError](DepartmentNotFound(deptId))
+      )
+    } yield dept
+
+    program
+      .map(dept => Ok(ApiResponse(dept).toJson))
+      .valueOr(error => BadRequest(ApiError(error.code, error.errorMessage).toJson))
+  }
 
   def upload = authAction(parse.multipartFormData) { request =>
     request.body.file("filepond").map { file =>
@@ -59,54 +76,52 @@ class AdminProductController @Inject()(
     } yield ProductEditData(product, translations)
 
     dataOpt map { productData =>
-      Ok(Json.toJson(ApiResponse(Json.obj(
+      Ok(ApiResponse(Json.obj(
         "product" -> productData.product,
         "translations" -> productData.translations
-      ))))
+      )).toJson)
     } getOrElse {
       NotFound(s"Product id $productId not found")
     }
   }
 
   def delete(productId: Long) = authAction.async {
-    productWriteRepository.deleteProduct(productId).map { _ =>
-      Ok
-    } recover {
-      case t: Throwable =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    productWriteRepository
+      .deleteProduct(productId)
+      .map(_ => Ok)
+      .recover {
+        case t: Throwable =>
+          Logger.error(t.toString)
+          ServiceUnavailable("Unexpected error")
+      }
   }
 
   def enable(productId: Long) = authAction.async {
-    val future = productWriteRepository.updateProductFields(productId, Map("status" -> "1"))
-
-    future.map { _ =>
-      Ok
-    } recover {
-      case t: Throwable =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    productWriteRepository
+      .updateProductFields(productId, Map("status" -> "1"))
+      .map(_ => Ok)
+      .recover {
+        case t: Throwable =>
+          Logger.error(t.toString)
+          ServiceUnavailable("Unexpected error")
+      }
   }
 
   def disable(productId: Long) = authAction.async {
-    val future = productWriteRepository.updateProductFields(productId, Map("status" -> "0"))
-
-    future.map { _ =>
-      Ok
-    } recover {
-      case t: Throwable =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    productWriteRepository.updateProductFields(productId, Map("status" -> "0"))
+      .map(_ => Ok)
+      .recover {
+        case t: Throwable =>
+          Logger.error(t.toString)
+          ServiceUnavailable("Unexpected error")
+      }
   }
 
   def duplicate(productId: Long) = authAction {
     val productTry = productService.cloneProduct(productId)
 
     productTry match {
-      case Success(product) => Ok(Json.toJson(ApiResponse(product)))
+      case Success(product) => Ok(ApiResponse(product).toJson)
       case Failure(t) =>
         Logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
@@ -119,8 +134,8 @@ class AdminProductController @Inject()(
     data match {
       case form: JsSuccess[EditProductForm] =>
         productService.updateProduct(productId, form.get) match {
-          case Left(error) => BadRequest(Json.toJson(ApiError(error.code, error.errorMessage)))
-          case _ => Ok(Json.toJson(ApiResponse.empty))
+          case Left(error) => BadRequest(ApiError(error.code, error.errorMessage).toJson)
+          case _ => Ok(ApiResponse.empty.toJson)
         }
       case e: JsError =>
         println(e)

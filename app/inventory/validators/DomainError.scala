@@ -5,13 +5,48 @@ sealed trait DomainError {
   val errorMessage: String
 }
 
+case object GenericError extends DomainError {
+  override val errorMessage = ""
+  override val code = "ERROR"
+}
+
+case object InvalidPasswordResetToken extends DomainError {
+  override val errorMessage = "Invalid password reset token."
+  override val code = "INVALID_PASSWORD_RESET_TOKEN"
+}
+
+case object InvalidPassword extends DomainError {
+  override val errorMessage = "Invalid password."
+  override val code = "INVALID_PASSWORD"
+}
+
+case object InvalidPayload extends DomainError {
+  override val errorMessage = "The payload is malformed."
+  override val code = "INVALID_PAYLOAD"
+}
+
 case object InvalidHash extends DomainError {
   override val errorMessage = "The hash does not match the current version."
   override val code = "INVALID_HASH"
 }
 
+case object InvalidName extends DomainError {
+  override val errorMessage = s"The name cannot be empty.";
+  override val code = "INVALID_NAME"
+}
+
+case class InvalidLanguage(lang: String) extends DomainError {
+  override val errorMessage = s"The language $lang is invalid.";
+  override val code = "INVALID_LANG"
+}
+
+case object InvalidCode extends DomainError {
+  override val errorMessage = s"The code cannot be empty.";
+  override val code = "INVALID_CODE"
+}
+
 case object InvalidSku extends DomainError {
-  override val errorMessage = "SKU cannot be empty, and must consist of alphanumeric, hyphens and underscores only."
+  override val errorMessage = "The SKU cannot be empty, and must consist of alphanumeric, hyphens and underscores only."
   override val code = "INVALID_SKU"
 }
 
@@ -77,5 +112,15 @@ case object InvalidQuantity extends DomainError {
 case class ProductNotFound(productId: Long) extends DomainError {
   override val errorMessage = s"Product ID $productId not found";
   override val code = "PRODUCT_NOT_FOUND"
+}
+
+case class UserNotFound(email: String) extends DomainError {
+  override val errorMessage = s"User not found with address ${email}";
+  override val code = "USER_NOT_FOUND"
+}
+
+case class DepartmentNotFound(departmentId: Long) extends DomainError {
+  override val errorMessage = s"Department ID $departmentId not found";
+  override val code = "DEPARTMENT_NOT_FOUND"
 }
 
