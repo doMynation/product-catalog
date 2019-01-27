@@ -35,14 +35,12 @@ class AdminProductController @Inject()(
   def createDepartment = authAction.async(parse.json) { req =>
     val json = req.body
 
-    val program: EitherT[Future, DomainError, ProductDepartment] = for {
-      dto <- EitherT.fromEither[Future](json.asOpt[ProductDepartmentDTO].toRight(InvalidPayload))
-      _ <- EitherT.fromEither[Future](dto.validate)
-      deptId <- EitherT.right[DomainError](productWriteRepository.createDepartment(dto))
+    val program = for {
+      dto <- EitherT.fromOption[Future](json.asOpt[ProductDepartmentDTO], InvalidPayload) // Parse JSON
+      _ <- EitherT.fromEither[Future](dto.validate) // Validate payload
+      deptId <- EitherT.right[DomainError](productWriteRepository.createDepartment(dto)) // Create dept
       dept <- EitherT.fromEither[Future](
-        productReadRepository
-          .getProductDepartment(deptId, "en")
-          .toRight[DomainError](DepartmentNotFound(deptId))
+        productReadRepository.getProductDepartment(deptId, "en").toRight[DomainError](DepartmentNotFound(deptId)) // Fetch the new dept
       )
     } yield dept
 

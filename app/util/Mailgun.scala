@@ -30,6 +30,7 @@ class Mailgun(ws: WSClient, domain: String, apiKey: String) {
         "text" -> Seq(body),
       ))
 
+    // @todo: Add error handling
     request.map(_ => ())
   }
 }

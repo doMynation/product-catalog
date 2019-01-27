@@ -1,7 +1,6 @@
 package authentication.controllers
 
 import javax.inject.Inject
-
 import authentication.AuthService
 import authentication.actions.AuthenticatedAction
 import authentication.forms.{ChangePasswordForm, LoginForm}
@@ -14,8 +13,6 @@ import inventory.validators.{DomainError, InvalidPasswordResetToken}
 import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc._
 import tsec.passwordhashers.jca.BCrypt
-import scala.concurrent.duration._
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class AuthController @Inject()(cc: ControllerComponents,
@@ -37,11 +34,10 @@ class AuthController @Inject()(cc: ControllerComponents,
 
         result.map {
           case Right(_) => Ok(ApiResponse.empty.toJson)
-          case Left(err @ InvalidPasswordResetToken) => Forbidden(ApiError(err.code, err.errorMessage).toJson)
+          case Left(InvalidPasswordResetToken) => Forbidden(ApiError(InvalidPasswordResetToken.code, InvalidPasswordResetToken.errorMessage).toJson)
           case Left(err) => BadRequest(ApiError(err.code, err.errorMessage).toJson)
         }
-      case e: JsError =>
-        Future.successful(BadRequest("Invalid request"))
+      case _ => Future.successful(BadRequest("Invalid request"))
     }
   }
 
