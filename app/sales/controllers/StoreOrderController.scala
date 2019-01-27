@@ -16,7 +16,6 @@ import sales.entities.Order
 import sales.repositories.{CustomerRepository, OrderRepository}
 import shared.repositories.CommentRepository
 import shared._
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreOrderController @Inject()(

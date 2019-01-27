@@ -10,14 +10,12 @@ import cats.instances.either._
 import cats.instances.option._
 import cats.instances.list._
 import cats.instances._
-import inventory.entities.RuleTypes
 import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.util.{Success, Try}
 
 object EditProductValidator {
   //  storePrices: Seq[ProductStorePriceDTO] = List(),
-  //  rules: Seq[ProductRuleDTO] = List(),
   //  assemblyParts: Seq[ProductAssemblyPartDTO] = List(),
 
   def validateHash(value: String): Either[DomainError, String] =
