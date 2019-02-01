@@ -1,43 +1,43 @@
 package inventory.controllers
 
 import javax.inject._
+
 import infrastructure.ApiResponse
 import inventory.actions.AuthenticatedAction
-import inventory.repositories.{ProductRepository}
+import inventory.entities.AttributeValue
+import inventory.repositories.{ProductRepository2}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import play.api.Logger
+import cats.implicits._
 
 class ProductController @Inject()(
                                    authAction: AuthenticatedAction,
                                    cc: ControllerComponents,
-                                   productRepository: ProductRepository,
+                                   productRepo: ProductRepository2,
                                  )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def getAttributes(lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getAttributes(chosenLang).map { attributes =>
-      val data = attributes.map { attribute =>
-        val values = if (attribute.inputType == "select") productRepository.getAttributeValues(attribute.id, chosenLang) else List()
+    for {
+      attrs <- productRepo.getAttributes(chosenLang)
+      attrsWithValues <- attrs.toList.traverse { attribute =>
+        val valuesF =
+          if (attribute.inputType == "select") productRepo.getAttributeValues(attribute.id, chosenLang)
+          else Future.successful(List.empty[AttributeValue])
 
-        attribute.copy(values = values)
+        valuesF.map(values => attribute.copy(values = values))
       }
-
-      Ok(Json.toJson(data))
-    } recover {
-      case t: Throwable =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    } yield Ok(Json.toJson(attrsWithValues))
   }
 
   def getDepartments(lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getProductDepartments(chosenLang).map { departments =>
+    productRepo.getProductDepartments(chosenLang).map { departments =>
       Ok(Json.toJson(departments))
     } recover {
       case t: Throwable =>
@@ -49,7 +49,7 @@ class ProductController @Inject()(
   def getCategories(lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getProductCategories(chosenLang).map { categories =>
+    productRepo.getProductCategories(chosenLang).map { categories =>
       Ok(Json.toJson(categories))
     } recover {
       case t: Throwable =>
@@ -58,63 +58,67 @@ class ProductController @Inject()(
     }
   }
 
-  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction { req =>
-    val ids = idsString.split(",").map(_.toInt)
+  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction.async {
+    val ids = idsString.split(",").map(_.toInt).toList
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
     if (ids.length > 100) {
-      BadRequest("Maximum of 100 products at once")
+      Future.successful(BadRequest("Maximum of 100 products at once"))
     } else {
-      val products = ids.flatMap(productRepository.get(_, chosenLang, includeSeq))
+      val products = ids.traverse(productRepo.getById(_, chosenLang, includeSeq))
 
-      Ok(Json.toJson(products))
+      products.map(products => Ok(Json.toJson(products.flatten)))
     }
   }
 
-  def get(id: Long, lang: Option[String], include: Option[String]) = authAction { req =>
+  def get(id: Long, lang: Option[String], include: Option[String]) = authAction.async {
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.get(id, chosenLang, includeSeq).map { product =>
-      Ok(Json.toJson(product))
-    } getOrElse {
-      NotFound(s"Product $id not found")
-    }
+    productRepo
+      .getById(id, chosenLang, includeSeq)
+      .map {
+        case Some(product) => Ok(Json.toJson(product))
+        case _ => NotFound(s"Product $id not found")
+      }
   }
 
-  def getBySku(sku: String, lang: Option[String], include: Option[String]) = authAction { req =>
+  def getBySku(sku: String, lang: Option[String], include: Option[String]) = authAction.async {
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getBySku(sku, chosenLang, includeSeq).map { product =>
-      Ok(Json.toJson(product))
-    } getOrElse {
-      NotFound(s"Product $sku not found")
-    }
+    productRepo
+      .getBySku(sku, chosenLang, includeSeq)
+      .map {
+        case Some(product) => Ok(Json.toJson(product))
+        case _ => NotFound(s"Product $sku not found")
+      }
   }
 
-  def getRule(id: Long, lang: Option[String]) = authAction { req =>
+  def getRule(id: Long, lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getRule(id, chosenLang).map { rule =>
-      Ok(Json.toJson(rule))
-    } getOrElse {
-      NotFound(s"Rule $id not found")
-    }
+    productRepo
+      .getProductRule(id, chosenLang)
+      .map {
+        case Some(rule) => Ok(Json.toJson(rule))
+        case _ => NotFound(s"Product $id not found")
+      }
   }
 
-  def getRules(id: Long, lang: Option[String]) = authAction { req =>
+  def getRules(id: Long, lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
-    val rules = productRepository.getProductRules(id, chosenLang)
 
-    Ok(Json.toJson(rules))
+    productRepo
+      .getProductRules(id, chosenLang)
+      .map(rules => Ok(Json.toJson(rules)))
   }
 
-  def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction { req =>
-    val values = productRepository.getAttributeValues(attributeId, lang.getOrElse("en"))
-
-    Ok(Json.toJson(values))
+  def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction.async {
+    productRepo
+      .getAttributeValues(attributeId, lang.getOrElse("en"))
+      .map(values => Ok(Json.toJson(values)))
   }
 
   def search(lang: Option[String], include: Option[String]) = authAction.async { req =>
@@ -122,13 +126,13 @@ class ProductController @Inject()(
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.search(sr, chosenLang, inc).map { searchResult =>
-      Ok(Json.toJson(
+    productRepo.search(sr, chosenLang, inc).map { searchResult =>
+      Ok(
         ApiResponse(searchResult.results, Map(
           "count" -> searchResult.totalCount.toString,
           "query" -> req.rawQueryString
-        ))
-      ))
+        )).toJson
+      )
     } recover {
       case t: Throwable =>
         Logger.error(t.toString)
@@ -136,13 +140,14 @@ class ProductController @Inject()(
     }
   }
 
-  def getCategory(id: Long, lang: Option[String]) = authAction {
+  def getCategory(id: Long, lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
 
-    productRepository.getProductCategory(id, chosenLang).map(category =>
-      Ok(Json.toJson(category))
-    ) getOrElse {
-      NotFound(s"Product category $id not found")
-    }
+    productRepo
+      .getProductCategory(id, chosenLang)
+      .map {
+        case Some(cat) => Ok(Json.toJson(cat))
+        case _ => NotFound(s"Product category $id not found")
+      }
   }
 }

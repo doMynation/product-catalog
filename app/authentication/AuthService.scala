@@ -15,14 +15,13 @@ import tsec.passwordhashers.PasswordHash
 import tsec.passwordhashers.jca.BCrypt
 import util.Mailgun
 
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import cats.data._
 import cats.implicits._
+import shared.Types.ServiceResponse
 
-class AuthService @Inject()(userRepo: UserRepository, mailgun: Mailgun, actorSystem: ActorSystem)(implicit executionContext: ExecutionContext) {
-  type ServiceResponse[T] = Future[Either[DomainError, T]]
-
+final class AuthService @Inject()(userRepo: UserRepository, mailgun: Mailgun, actorSystem: ActorSystem)(implicit executionContext: ExecutionContext) {
   def verify(form: LoginForm): OptionT[IO, User] =
     for {
       _ <- OptionT.fromOption[IO](form.validate.toOption)

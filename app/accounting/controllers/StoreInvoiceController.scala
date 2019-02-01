@@ -2,28 +2,30 @@ package accounting.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import accounting.entities.Invoice
 import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
-import inventory.repositories.ProductRepository
+import inventory.repositories.ProductRepository2
 import inventory.util.SearchRequest
 import play.api.Logger
-import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
+import sales.SalesService
 import sales.repositories.CustomerRepository
-import shared.{Includable, InvoiceId, LineItem, LineItems}
+import shared.{Includable, InvoiceId, LineItems}
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(
                                         authAction: AuthenticatedAction,
                                         cc: ControllerComponents,
-                                        db: Database,
                                         invoiceRepository: InvoiceRepository,
                                         customerRepository: CustomerRepository,
-                                        productRepository: ProductRepository
+                                        productRepo: ProductRepository2,
+                                        salesService: SalesService
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
@@ -91,15 +93,11 @@ class StoreInvoiceController @Inject()(
       case "customer" => customerRepository.get(invoice.customerId).map(_.map(("customer", _)))
       case "taxes" => invoiceRepository.getTaxes(InvoiceId(invoice.id)).map(taxes => Some(("taxes", taxes)))
       case "lineItems" =>
-        // Get the line items
-        val lineItemsF: Future[Seq[LineItem]] = invoiceRepository.getLineItems(InvoiceId(invoice.id)).map(_.map { li =>
-          // Get each line item's corresponding product (if any)
-          li.copy(product = li.productId.flatMap(productRepository.get(_, lang)))
-        })
-
-        lineItemsF.map(lineItems =>
-          Some(("lineItems", LineItems(lineItems)))
-        )
+        // Get each line items, fetch their corresponding product and apply attribute overrides
+        for {
+          items <- invoiceRepository.getLineItems(InvoiceId(invoice.id))
+          itemsWithProduct <- items.toList.traverse(salesService.populateLineItem(_, lang))
+        } yield Some(("lineItems", LineItems(itemsWithProduct)))
     }).toSeq
 
     // Execute all futures concurrently, and create a map out of the result

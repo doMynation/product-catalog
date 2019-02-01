@@ -2,18 +2,21 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import cats.data.OptionT
 import cats.implicits._
 import inventory.actions.AuthenticatedAction
-import inventory.repositories.{ProductInclusions, ProductRepository}
+import inventory.repositories.{ProductInclusions, ProductRepository2}
 import inventory.util.SearchRequest
 import play.api.Logger
 import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
+import sales.SalesService
 import sales.entities.Quote
 import sales.repositories.{CustomerRepository, QuoteRepository}
 import shared._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreQuoteController @Inject()(
@@ -22,7 +25,8 @@ class StoreQuoteController @Inject()(
                                       db: Database,
                                       quoteRepository: QuoteRepository,
                                       customerRepository: CustomerRepository,
-                                      productRepository: ProductRepository
+                                      productRepo: ProductRepository2,
+                                      salesService: SalesService
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def get(quoteId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
@@ -83,20 +87,11 @@ class StoreQuoteController @Inject()(
       case "taxes" => quoteRepository.getTaxes(QuoteId(quote.id)).map(taxes => Some(("taxes", taxes)))
       case "attachments" => quoteRepository.getAttachments(QuoteId(quote.id)).map(attachments => Some(("attachments", FilesCollection(attachments))))
       case "lineItems" =>
-        // Get the line items
-        val lineItemsF: Future[Seq[LineItem]] = quoteRepository.getLineItems(QuoteId(quote.id)).map(_.map { li =>
-          // Get each line item's corresponding product (if any)
-          val overridenProduct = for {
-            productId <- li.productId
-            product <- productRepository.get(productId, lang, List(ProductInclusions.ATTRIBUTES))
-          } yield productRepository.applyProductAttributeOverrides(product, li.attributeOverrides, lang)
-
-          li.copy(product = overridenProduct)
-        })
-
-        lineItemsF.map(lineItems =>
-          Some(("lineItems", LineItems(lineItems)))
-        )
+        // Get each line items, fetch their corresponding product and apply attribute overrides
+        for {
+          items <- quoteRepository.getLineItems(QuoteId(quote.id))
+          itemsWithProduct <- items.toList.traverse(salesService.populateLineItem(_, lang, List(ProductInclusions.ATTRIBUTES)))
+        } yield Some(("lineItems", LineItems(itemsWithProduct)))
     }).toSeq
 
     // Execute all futures concurrently, and create a map out of the result

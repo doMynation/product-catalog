@@ -3,13 +3,15 @@ package inventory.forms
 import java.time.LocalDateTime
 
 import inventory.dtos._
-import inventory.repositories.{MiscRepository, ProductRepository}
+import inventory.repositories.{MiscRepository, ProductRepository2}
 import inventory.validators.{DomainError, EditProductValidator}
 import shared.dtos.TranslationDTO
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
 import shared.DTOMappable
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
   val nullToStringMapReader: Reads[Map[String, String]] = new Reads[Map[String, String]] {
@@ -91,7 +93,7 @@ case class EditProductForm(
                             isCustom: Boolean = false,
                             isEnabled: Boolean = true) {
 
-  def validate(productRepository: ProductRepository, miscRepository: MiscRepository): Either[DomainError, ProductDTO] =
-    EditProductValidator.validate(this, productRepository, miscRepository)
+  def validate(productRepo: ProductRepository2, miscRepo: MiscRepository)(implicit ec: ExecutionContext): Future[Either[DomainError, ProductDTO]] =
+    (new EditProductValidator).validate(this, productRepo, miscRepo)
 }
 

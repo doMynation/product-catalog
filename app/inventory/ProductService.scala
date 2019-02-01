@@ -2,80 +2,89 @@ package inventory
 
 import java.sql.Connection
 import javax.inject.Inject
-import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO}
-import inventory.entities.{Attribute, Product, ProductAttribute}
+import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO, ProductDTO}
+import inventory.entities.{Product, ProductAttribute}
 import inventory.forms.EditProductForm
-import inventory.repositories.{MiscRepository, ProductInclusions, ProductRepository, ProductWriteRepository}
-import inventory.validators.{DomainError, InvalidHash}
+import inventory.repositories._
+import inventory.validators._
 import play.api.db.Database
-import scala.util.{Failure, Random, Try}
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Random
+import cats.data.{EitherT, OptionT}
+import cats.implicits._
+import shared.Types.ServiceResponse
 
-final class ProductService @Inject()(readRepository: ProductRepository, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database) {
+final class ProductService @Inject()(readRepo: ProductRepository2, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database)(implicit ec: ExecutionContext) {
 
-  def updateProduct(productId: Long, form: EditProductForm): Either[DomainError, Unit] =
-    readRepository
-      .get(productId, "en")
-      .filter(_.hash == form.hash)
-      .map(product => form
-        .validate(readRepository, miscRepository)
-        .map(dto => writeRepository.updateProduct(product, dto))
-      ).getOrElse(Left(InvalidHash))
-
-  def cloneProduct(productId: Long): Try[Product] = {
-    // Fetch the product's info
-    val includes = List(ProductInclusions.ATTRIBUTES, ProductInclusions.CHILDREN, ProductInclusions.RULES, ProductInclusions.ASSEMBLY_PARTS)
-    val productOpt = readRepository.get(productId, "en", includes)
-
-    if (productOpt.isEmpty)
-      return Failure(new RuntimeException("Product not found"))
-
-    val product = productOpt.get
-    val newSku = s"${product.sku}_COPIE_${Random.alphanumeric.take(5).mkString("")}"
-    val dto = product.toDto.copy(sku = newSku)
-    val translationDtos = readRepository.getTranslations(product.descriptionId).map(_.toDto)
-    val storePricesDtos = readRepository.getProductStorePrices(productId).map(_.toDto)
-
-    val dtoAugmented = dto.copy(
-      translations = translationDtos,
-      storePrices = storePricesDtos
-    )
-
-    writeRepository.createProduct(dtoAugmented).map { newProductId =>
-      readRepository.get(newProductId, "en").get
-    }
+  def updateProduct(productId: Long, form: EditProductForm): ServiceResponse[Unit] = {
+    (for {
+      product <- EitherT.fromOptionF(readRepo.getById(productId, "en"), ProductNotFound(productId)) // Fetch product
+      _ <- EitherT.cond[Future](product.hash == form.hash, product.hash, InvalidHash) // Check hash
+      dto <- EitherT(form.validate(readRepo, miscRepository)) // Validate form
+      _ <- EitherT.rightT[Future, DomainError](writeRepository.updateProduct(product, dto)) // Update product
+    } yield ()).value
   }
 
-  def addProductAttributes(productId: Long, attributeIdValuePairs: Seq[AttributeIdValuePair]): Boolean = db.withTransaction { implicit conn =>
-    attributeIdValuePairs.foreach { pair =>
-      // Get the attribute
-      val ao: Option[Attribute] = readRepository.getAttribute(pair.id, "en")
+  def cloneProduct(productId: Long): ServiceResponse[Product] = {
+    val includes = List(ProductInclusions.ATTRIBUTES, ProductInclusions.CHILDREN, ProductInclusions.RULES, ProductInclusions.ASSEMBLY_PARTS)
+    val error: DomainError = GenericError
 
-      ao map { attribute =>
-        val dto = ProductAttributeDTO(
-          attribute.id,
+    val program = for {
+      product <- EitherT.fromOptionF(readRepo.getById(productId, "en", includes), error) // Fetch the product
+      dto <- EitherT.right[DomainError](prepDto(product)) // Convert to DTO
+      newProductId <- EitherT.fromOption[Future](writeRepository.createProduct(dto).toOption, error) // Create product
+      newProduct <- EitherT.fromOptionF(readRepo.getById(newProductId, "en", includes), error) // Fetch the new product
+    } yield newProduct
+
+    program.value
+  }
+
+  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse[Unit] = db.withTransaction { implicit conn =>
+    // @todo: Check duplicates
+    val error: DomainError = InvalidAttributes
+    val result = attributeIdValuePairs.traverse { pair =>
+      for {
+        attr <- EitherT.fromOptionF(readRepo.getAttribute(pair.id, "en"), error) // Get the attribute
+        dto <- EitherT.rightT[Future, DomainError](ProductAttributeDTO( // Convert to DTO
+          attr.id,
           pair.value,
           None,
           pair.isEditable,
-          attribute.inputType == "select")
-
-        insertOrReplaceProductAttribute(productId, dto)
-      } getOrElse {
-        throw new RuntimeException(s"Attribute ${pair.id} does not exist")
-      }
+          attr.inputType == "select"
+        ))
+        _ <- EitherT.right[DomainError](insertOrReplaceProductAttribute(productId, dto)) // Persist attributes
+      } yield ()
     }
 
-    true
+    result.map(_ => ()).value
   }
 
-  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Unit = {
+  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Future[Unit] = {
     // Check if the product already has that attribute
-    val pao: Option[ProductAttribute] = readRepository.getProductAttribute(productId, dto.attributeId, "en")
+    val pao: Future[Option[ProductAttribute]] = readRepo.getProductAttribute(productId, dto.attributeId, "en")
 
-    pao.map { pa =>
-      writeRepository.updateProductAttribute(pa.id, dto).toString
+    OptionT(pao).map { pa =>
+      writeRepository.updateProductAttribute(pa.id, dto)
+      () // @todo: Fix this
     } getOrElse {
       // Add a new attribute
       writeRepository.createProductAttribute(productId, dto)
+      () // @todo: Fix this
     }
+  }
+
+  private def prepDto(product: Product): Future[ProductDTO] = {
+    val newSku = s"${product.sku}_COPIE_${Random.alphanumeric.take(5).mkString("")}"
+    val dto = product.toDto.copy(sku = newSku)
+    val translationsF = readRepo.getTranslations(product.descriptionId)
+    val storePricesF = readRepo.getProductStorePrices(product.id)
+
+    for {
+      translations <- translationsF
+      storePrices <- storePricesF
+    } yield dto.copy(
+      translations = translations.map(_.toDto),
+      storePrices = storePrices.map(_.toDto)
+    )
   }
 }

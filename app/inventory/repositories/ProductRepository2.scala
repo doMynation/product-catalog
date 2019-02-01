@@ -1,8 +1,9 @@
 package inventory.repositories
 
-import java.sql.ResultSet
-import java.time.LocalDateTime
 import javax.inject.Inject
+import cats.data.OptionT
+import cats.instances._
+import cats.implicits._
 import infrastructure.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
@@ -11,24 +12,78 @@ import shared.entities.Lang
 import scala.collection.immutable.{ListSet, Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
+import shared.Types.Product
 
 final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
-  // Type alias
-  type Product = inventory.entities.Product
 
-  def get(id: Long, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
-    val product = store.map(getProductByStore(id, lang, _)) getOrElse getProduct(id, lang)
+  def getById(id: Long, lang: String): Future[Option[Product]] =
+    getProduct("id", id.toString, lang)
 
-    product.map(handleInclusions(_, lang, include))
+  def getById(id: Long, lang: String, include: Seq[String] = Seq()): Future[Option[Product]] = {
+    val program = for {
+      product <- OptionT(getById(id, lang))
+      product <- OptionT.liftF(handleInclusions(product, lang, include))
+    } yield product
+
+    program.value
   }
 
-  def getBySku(sku: String, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Option[Product] = {
-    val product = store.map(getProductByStore(sku, lang, _)) getOrElse getProduct(sku, lang)
+  def getBySku(sku: String, lang: String): Future[Option[Product]] =
+    getProduct("sku", sku, lang)
 
-    product.map(handleInclusions(_, lang, include))
+  def getBySku(sku: String, lang: String, include: Seq[String] = Seq()): Future[Option[Product]] = {
+    val program = for {
+      product <- OptionT(getBySku(sku, lang))
+      product <- OptionT.liftF(handleInclusions(product, lang, include))
+    } yield product
+
+    program.value
   }
 
-  def getAttributeValue(valueId: Long, lang: String): Option[AttributeValue] = db.withConnection { conn =>
+  private def getProduct(idType: String, id: String, lang: String): Future[Option[Product]] = Future {
+    val whereClause: String = idType match {
+      case "id" => "p.id = @id"
+      case "sku" => "p.sku = @id"
+      case _ => "p.id = @id"
+    }
+
+    val sql =
+      s"""
+            SELECT
+              p.*,
+              p.retail_price AS price,
+              c.*,
+              d.*,
+              COALESCE(t.label, dt.label) AS `p.name`,
+              COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
+              COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
+              COALESCE(tc.label, dtc.label) AS `c.name`,
+              COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
+              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
+              COALESCE(td.label, dtd.label) AS `d.name`,
+              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
+              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
+            FROM inv_products p
+            JOIN inv_product_categories c ON c.id = p.category_id
+            JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
+            LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
+            JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
+            LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
+            LEFT JOIN inv_departments d ON d.id = p.department_id
+            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
+            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
+            WHERE $whereClause
+         """
+
+    val query = DatabaseHelper.fetchOne(sql, Map(
+      "id" -> id,
+      "langId" -> Lang.fromString(lang, 1).toString
+    ))(Hydrators.hydrateProduct) _
+
+    db.withConnection(query)
+  }
+
+  def getAttributeValue(valueId: Long, lang: String): Future[Option[AttributeValue]] = Future {
     val sql =
       s"""
          SELECT
@@ -42,13 +97,15 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          WHERE v.id = @valueId
        """
 
-    DatabaseHelper.fetchOne(sql, Map(
+    val query = DatabaseHelper.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "valueId" -> valueId.toString
-    ))(hydrateAttributeValue)(conn)
+    ))(Hydrators.hydrateAttributeValue) _
+
+    db.withConnection(query)
   }
 
-  def getAttributeValues(attributeId: Long, lang: String): Seq[AttributeValue] = db.withConnection { conn =>
+  def getAttributeValues(attributeId: Long, lang: String): Future[Seq[AttributeValue]] = Future {
     val sql =
       s"""
          SELECT
@@ -63,343 +120,180 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          WHERE av.attribute_id = @attributeId
        """
 
-    DatabaseHelper.fetchMany(sql, Map(
+    val query = DatabaseHelper.fetchMany(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
-    ))(hydrateAttributeValue)(conn)
+    ))(Hydrators.hydrateAttributeValue) _
+
+    db.withConnection(query)
   }
 
-  def getProductRules(productId: Long, lang: String)(implicit store: Option[Store] = None): Seq[ProductRule] = {
-    store map (getProductRulesByStore(productId, lang, _)) getOrElse getRules(productId, lang)
-  }
+  def getProductRules(productId: Long, lang: String): Future[Seq[ProductRule]] = {
+    // Fetch the records
+    val step1 = Future {
+      val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
+      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString))(Hydrators.productRuleExtractor) _
 
-  def getRule(id: Long, lang: String)(implicit store: Option[Store] = None): Option[ProductRule] = {
-    store.map(getProductRuleByStore(id, lang, _)) getOrElse getProductRule(id, lang)
-  }
+      db.withConnection(query)
+    }
 
-  def getTranslations(descriptionId: Long): Seq[Translation] = db.withConnection { conn =>
-    val sql = "SELECT * FROM translations WHERE description_id = @descriptionId"
-
-    DatabaseHelper.fetchMany(sql, Map("descriptionId" -> descriptionId.toString))(hydrateTranslation)(conn)
-  }
-
-  private def getRules(productId: Long, lang: String): Seq[ProductRule] = db.withConnection { conn =>
-    val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
-
-    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
-      val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"$ruleProductId does not exist"))
-    }(conn)
-  }
-
-  private def getProductRule(id: Long, lang: String): Option[ProductRule] = db.withConnection { conn =>
-    val sql = "SELECT * FROM inv_product_relations pr WHERE pr.id = @ruleId"
-
-    DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString)) { rs =>
-      val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product $ruleProductId not found"))
-    }(conn)
-  }
-
-  private def getProductRuleByStore(id: Long, lang: String, store: Store) = db.withConnection { conn =>
-    val sql = "SELECT * FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.id = @ruleId"
-    val params = Map(
-      "storeId" -> store.id.toString,
-      "ruleId" -> id.toString,
-    )
-
-    DatabaseHelper.fetchOne(sql, params) { rs =>
-      val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"Product $ruleProductId not found"))
-    }(conn)
-  }
-
-  private def getProductRulesByStore(productId: Long, lang: String, store: Store): Seq[ProductRule] = db.withConnection { conn =>
-    val sql = "SELECT pr.* FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.product_id = @productId"
-    val params = Map(
-      "storeId" -> store.id.toString,
-      "productId" -> productId.toString,
-    )
-
-    DatabaseHelper.fetchMany(sql, params) { rs =>
-      val ruleProductId = rs.getLong("related_product_id")
-      get(ruleProductId, lang)(Some(store)).map(hydrateProductRule(_, rs)).getOrElse(throw new RuntimeException(s"$ruleProductId does not exist"))
-    }(conn)
-  }
-
-  private def getProduct(id: Long, lang: String): Option[Product] = db.withConnection { conn =>
-    val sql =
-      s"""
-            SELECT
-              p.*,
-              p.retail_price AS price,
-              c.*,
-              d.*,
-              COALESCE(t.label, dt.label) AS `p.name`,
-              COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
-              COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
-              COALESCE(tc.label, dtc.label) AS `c.name`,
-              COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
-              COALESCE(td.label, dtd.label) AS `d.name`,
-              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
-              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
-            FROM inv_products p
-            JOIN inv_product_categories c ON c.id = p.category_id
-            JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
-            LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
-            JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
-            LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
-            LEFT JOIN inv_departments d ON d.id = p.department_id
-            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
-            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
-            WHERE p.id = @productId
-         """
-
-    DatabaseHelper.fetchOne(sql, Map(
-      "productId" -> id.toString,
-      "langId" -> Lang.fromString(lang, 1).toString
-    ))(hydrateProduct)(conn)
-  }
-
-  private def getProduct(sku: String, lang: String): Option[Product] = db.withConnection { conn =>
-    val sql =
-      s"""
-            SELECT
-              p.*,
-              p.retail_price AS price,
-              c.*,
-              d.*,
-              COALESCE(t.label, dt.label) AS `p.name`,
-              COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
-              COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
-              COALESCE(tc.label, dtc.label) AS `c.name`,
-              COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
-              COALESCE(td.label, dtd.label) AS `d.name`,
-              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
-              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
-            FROM inv_products p
-            JOIN inv_product_categories c ON c.id = p.category_id
-            JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
-            LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
-            JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
-            LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
-            LEFT JOIN inv_departments d ON d.id = p.department_id
-            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
-            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
-            WHERE p.sku = @sku
-         """
-
-    DatabaseHelper.fetchOne(sql, Map(
-      "sku" -> sku,
-      "langId" -> Lang.fromString(lang, 1).toString
-    ))(hydrateProduct)(conn)
-  }
-
-  private def getProductByStore(id: Long, lang: String, store: Store): Option[Product] = db.withConnection { conn =>
-    val sql =
-      s"""
-            SELECT
-              p.*,
-              c.*,
-              d.*,
-              COALESCE(ps.price, p.retail_price) AS price,
-              COALESCE(t.label, dt.label) AS `p.name`,
-              COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
-              COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
-              COALESCE(tc.label, dtc.label) AS `c.name`,
-              COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
-              COALESCE(td.label, dtd.label) AS `d.name`,
-              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
-              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
-            FROM inv_products p
-            JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId
-            JOIN inv_product_categories c ON c.id = p.category_id
-            JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
-            LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
-            JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
-            LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
-            LEFT JOIN inv_departments d ON d.id = p.department_id
-            LEFT JOIN translations dtd ON dtd.description_id = d.description_id AND dtd.is_default = 1
-            LEFT JOIN translations td ON td.description_id = d.description_id AND td.lang_id = @langId
-            WHERE p.id = @productId
-       """
-
-    DatabaseHelper.fetchOne(sql, Map(
-      "productId" -> id.toString,
-      "langId" -> Lang.fromString(lang, 1).toString,
-      "storeId" -> store.id.toString
-    ))(hydrateProduct)(conn)
-  }
-
-  private def getProductByStore(sku: String, lang: String, store: Store): Option[Product] = db.withConnection(conn => {
-    val sql =
-      s"""
-            SELECT
-              p.*,
-              c.*,
-              d.*,
-              COALESCE(ps.price, p.retail_price) AS price,
-              COALESCE(t.label, dt.label) AS `p.name`,
-              COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
-              COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
-              COALESCE(tc.label, dtc.label) AS `c.name`,
-              COALESCE(tc.short_description, dtc.short_description) AS `c.short_description`,
-              COALESCE(tc.long_description, dtc.long_description) AS `c.long_description`,
-              COALESCE(td.label, dtd.label) AS `d.name`,
-              COALESCE(td.short_description, dtd.short_description) AS `d.short_description`,
-              COALESCE(td.long_description, dtd.long_description) AS `d.long_description`
-            FROM inv_products p
-            JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId
-            JOIN inv_product_categories c ON c.id = p.category_id
-            JOIN translations dt ON dt.description_id = p.description_id AND dt.is_default = 1
-            LEFT JOIN translations t ON t.description_id = p.description_id AND t.lang_id = @langId
-            JOIN translations dtc ON dtc.description_id = c.description_id AND dtc.is_default = 1
-            LEFT JOIN translations tc ON tc.description_id = c.description_id AND tc.lang_id = @langId
-            WHERE p.sku = @sku
-       """
-
-    DatabaseHelper.fetchOne(sql, Map(
-      "storeId" -> store.id.toString,
-      "langId" -> Lang.fromString(lang, 1).toString,
-      "sku" -> sku
-    ))(hydrateProduct)(conn)
-  })
-
-  def getDescription(id: Long, lang: String): Option[Description] = db.withConnection { conn =>
-    val sql = "SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
-
-    DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString))(hydrateDescription)(conn)
-  }
-
-  def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq())(implicit store: Option[Store] = None): Future[SearchResult[Product]] = Future {
-    db.withConnection(conn => {
-      val wheres = new ListBuffer[String]()
-      val havings = new ListBuffer[String]()
-      val joins = new ListBuffer[String]()
-      var params: Map[String, String] = Map(
-        "langId" -> Lang.fromString(lang, 1).toString
-      )
-
-      var priceColumn = "p.retail_price"
-
-      wheres += "1 = 1"
-      havings += "1 = 1"
-
-      sr.filters.get("isEnabled").foreach(value => {
-        wheres += "p.status = @isEnabled"
-        params = params + ("isEnabled" -> value)
-      })
-
-      sr.filters.get("isKit").foreach(value => {
-        wheres += "p.is_kit = @isKit"
-        params = params + ("isKit" -> value)
-      })
-
-      sr.filters.get("isCustom").foreach(value => {
-        wheres += "is_custom = @isCustom"
-        params = params + ("isCustom" -> value)
-      })
-
-      // `id` filter
-      sr.filters.get("id").foreach(value => {
-        wheres += "p.id LIKE @id"
-        params = params + ("id" -> s"%$value%")
-      })
-
-      // `sku` filter
-      sr.filters.get("sku").foreach(value => {
-        wheres += "sku LIKE @sku"
-        params = params + ("sku" -> s"%$value%")
-      })
-
-      // `name` filter
-      sr.filters.get("name").foreach(value => {
-        havings += "`p.name` LIKE @name"
-        params = params + ("name" -> s"%$value%")
-      })
-
-      // `label` filter (alias for `name`)
-      sr.filters.get("label").foreach(value => {
-        havings += "`p.name` LIKE @name"
-        params = params + ("name" -> s"%$value%")
-      })
-
-      // `nameSku` filter
-      sr.filters.get("nameSku").foreach(value => {
-        havings += "(`p.name` LIKE @name OR sku LIKE @sku)"
-        params = params + ("name" -> s"%$value%", "sku" -> s"%$value%")
-      })
-
-      // `department` filter
-      sr.filters.get("department").foreach(value => {
-        wheres += "(d.code = @department)"
-        params = params + ("department" -> value)
-      })
-
-      sr.filters.get("departmentId").foreach(value => {
-        wheres += "(d.id = @departmentId)"
-        params = params + ("departmentId" -> value)
-      })
-
-      // `category` filter (e.g. "model", "model,option")
-      sr.filters.get("category").foreach(value => {
-        val categories = value.split(",")
-        val inClause = categories.foldLeft(Queue[String]()) {
-          (acc, categoryName) => acc :+ s"'$categoryName'"
-        }.mkString(",")
-
-        joins += s"JOIN inv_product_categories tree ON tree.code IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
-      })
-
-      sr.filters.get("categoryId").foreach(value => {
-        val categories = value.split(",")
-        val inClause = categories.foldLeft(Queue[String]()) {
-          (acc, categoryId) => acc :+ s"$categoryId"
-        }.mkString(",")
-
-        joins += s"JOIN inv_product_categories tree ON tree.id IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
-      })
-
-      // When a implicit store is defined, enforce it and disallow filtering by store
-      if (store.isDefined) {
-        joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
-        params = params + ("storeId" -> store.get.id.toString)
-        priceColumn = "IFNULL(ps.price, p.retail_price)"
-      } else {
-        sr.filters.get("storeId").foreach(value => {
-          joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
-          params = params + ("storeId" -> value.toString)
-        })
+    val step2 = step1.flatMap { records =>
+      Future.traverse(records) { rec =>
+        (for {
+          product <- OptionT(getById(rec._1, lang))
+        } yield ProductRule(rec._2, product, rec._3, rec._4, rec._5, rec._6)).value
       }
+    }
 
-      val allowedSortFields = Map(
-        "id" -> "p.id",
-        "sku" -> "sku",
-        "name" -> "`p.name`",
-        "price" -> "price",
-        "shortDescription" -> "`p.short_description`",
-        "longDescription" -> "`p.long_description`",
-        "isCustom" -> "p.is_custom",
-        "category" -> "p.category_id",
-      )
+    step2.map(_.flatten)
+  }
 
-      // Default sort to ID in descending order
-      val (sortField, sortOrder) = sr.sortField
-        .flatMap(allowedSortFields.get)
-        .map(field => (field, sr.sortOrder))
-        .getOrElse(("p.id", SearchRequest.SORT_DESC))
+  def getProductRule(id: Long, lang: String): Future[Option[ProductRule]] = {
+    val step1 = Future {
+      val sql = "SELECT * FROM inv_product_relations pr WHERE pr.id = @ruleId"
+      val query = DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString))(Hydrators.productRuleExtractor) _
 
-      val fetchSql =
-        s"""
+      db.withConnection(query)
+    }
+
+    val step2 = for {
+      rec <- OptionT(step1)
+      product <- OptionT(getById(rec._1, lang))
+    } yield ProductRule(rec._2, product, rec._3, rec._4, rec._5, rec._6)
+
+    step2.value
+  }
+
+  def getTranslations(descriptionId: Long): Future[Seq[Translation]] = Future {
+    val sql = "SELECT * FROM translations WHERE description_id = @descriptionId"
+    val query = DatabaseHelper.fetchMany(sql, Map("descriptionId" -> descriptionId.toString))(Hydrators.hydrateTranslation) _
+
+    db.withConnection(query)
+  }
+
+  def getDescription(id: Long, lang: String): Future[Option[Description]] = Future {
+    val sql = "SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
+    val query = DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString))(Hydrators.hydrateDescription) _
+
+    db.withConnection(query)
+  }
+
+  def search(sr: SearchRequest, lang: String, include: Seq[String] = Seq()): Future[SearchResult[Product]] = {
+    val wheres = new ListBuffer[String]()
+    val havings = new ListBuffer[String]()
+    val joins = new ListBuffer[String]()
+    var params: Map[String, String] = Map(
+      "langId" -> Lang.fromString(lang, 1).toString
+    )
+
+    wheres += "1 = 1"
+    havings += "1 = 1"
+
+    sr.filters.get("isEnabled").foreach(value => {
+      wheres += "p.status = @isEnabled"
+      params = params + ("isEnabled" -> value)
+    })
+
+    sr.filters.get("isKit").foreach(value => {
+      wheres += "p.is_kit = @isKit"
+      params = params + ("isKit" -> value)
+    })
+
+    sr.filters.get("isCustom").foreach(value => {
+      wheres += "is_custom = @isCustom"
+      params = params + ("isCustom" -> value)
+    })
+
+    // `id` filter
+    sr.filters.get("id").foreach(value => {
+      wheres += "p.id LIKE @id"
+      params = params + ("id" -> s"%$value%")
+    })
+
+    // `sku` filter
+    sr.filters.get("sku").foreach(value => {
+      wheres += "sku LIKE @sku"
+      params = params + ("sku" -> s"%$value%")
+    })
+
+    // `name` filter
+    sr.filters.get("name").foreach(value => {
+      havings += "`p.name` LIKE @name"
+      params = params + ("name" -> s"%$value%")
+    })
+
+    // `label` filter (alias for `name`)
+    sr.filters.get("label").foreach(value => {
+      havings += "`p.name` LIKE @name"
+      params = params + ("name" -> s"%$value%")
+    })
+
+    // `nameSku` filter
+    sr.filters.get("nameSku").foreach(value => {
+      havings += "(`p.name` LIKE @name OR sku LIKE @sku)"
+      params = params + ("name" -> s"%$value%", "sku" -> s"%$value%")
+    })
+
+    // `department` filter
+    sr.filters.get("department").foreach(value => {
+      wheres += "(d.code = @department)"
+      params = params + ("department" -> value)
+    })
+
+    sr.filters.get("departmentId").foreach(value => {
+      wheres += "(d.id = @departmentId)"
+      params = params + ("departmentId" -> value)
+    })
+
+    // `category` filter (e.g. "model", "model,option")
+    sr.filters.get("category").foreach(value => {
+      val categories = value.split(",")
+      val inClause = categories.foldLeft(Queue[String]()) {
+        (acc, categoryName) => acc :+ s"'$categoryName'"
+      }.mkString(",")
+
+      joins += s"JOIN inv_product_categories tree ON tree.code IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
+    })
+
+    sr.filters.get("categoryId").foreach(value => {
+      val categories = value.split(",")
+      val inClause = categories.foldLeft(Queue[String]()) {
+        (acc, categoryId) => acc :+ s"$categoryId"
+      }.mkString(",")
+
+      joins += s"JOIN inv_product_categories tree ON tree.id IN ($inClause) AND tree.left_id <= c.left_id AND tree.right_id >= c.right_id"
+    })
+
+    sr.filters.get("storeId").foreach(value => {
+      joins += "JOIN inv_product_stores ps ON ps.product_id = p.id AND ps.store_id = @storeId"
+      params = params + ("storeId" -> value.toString)
+    })
+
+    val allowedSortFields = Map(
+      "id" -> "p.id",
+      "sku" -> "sku",
+      "name" -> "`p.name`",
+      "price" -> "price",
+      "shortDescription" -> "`p.short_description`",
+      "longDescription" -> "`p.long_description`",
+      "isCustom" -> "p.is_custom",
+      "category" -> "p.category_id",
+    )
+
+    // Default sort to ID in descending order
+    val (sortField, sortOrder) = sr.sortField
+      .flatMap(allowedSortFields.get)
+      .map(field => (field, sr.sortOrder))
+      .getOrElse(("p.id", SearchRequest.SORT_DESC))
+
+    val fetchSql =
+      s"""
               SELECT
                 SQL_CALC_FOUND_ROWS
                 p.*,
-                $priceColumn AS price,
                 c.*,
                 d.*,
+                p.retail_price AS price,
                 COALESCE(t.label, dt.label) AS `p.name`,
                 COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
                 COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
@@ -425,34 +319,60 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
 
-      val products = DatabaseHelper.fetchMany(fetchSql, params)(hydrateProduct)(conn).map(handleInclusions(_, lang, include))
-      val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
+    // Get the products
+    val step1 = Future {
+      db.withConnection { conn =>
+        val products = DatabaseHelper.fetchMany(fetchSql, params)(Hydrators.hydrateProduct)(conn)
+        val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
 
-      SearchResult(products, totalCount.get)
-    })
+        (products, totalCount.get)
+      }
+    }
+
+    // Handle includes for all products
+    val step2 = step1.flatMap { tuple =>
+      val productsWithInclude = Future.traverse(tuple._1)(handleInclusions(_, lang, include))
+      productsWithInclude.map((_, tuple._2))
+    }
+
+    // Return a SearchResult
+    step2.map(result => SearchResult(result._1, result._2))
   }
 
-  def getProductStorePrices(productId: Long): Seq[ProductStorePrice] = db.withConnection { conn =>
-    val sql = "SELECT * FROM inv_product_stores WHERE product_id = @productId"
-
-    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
-      ProductStorePrice(rs.getLong("store_id"), DatabaseHelper.getNullable[BigDecimal]("price", rs))
-    }(conn)
-  }
-
-  def getProductAssemblyParts(productId: Long, lang: String): Seq[ProductAssemblyPart] = db.withConnection { conn =>
+  def getProductAssemblyParts(productId: Long, lang: String): Future[Seq[ProductAssemblyPart]] = {
     val sql = "SELECT * FROM inv_product_assemblies WHERE product_id = @productId"
 
-    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
-      val assemblyPartId = rs.getLong("assembly_product_id")
+    // Get all records
+    val step1 = Future {
+      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+        (rs.getLong("assembly_product_id"), rs.getString("tag"), rs.getBoolean("is_default"))
+      } _
 
-      get(assemblyPartId, lang)
-        .map(part => ProductAssemblyPart(part, rs.getString("tag"), rs.getBoolean("is_default")))
-        .getOrElse(throw new RuntimeException(s"$assemblyPartId does not exist"))
-    }(conn)
+      db.withConnection(query)
+    }
+
+    // Fetch their corresponding product
+    val step2 = step1.flatMap { records =>
+      Future.traverse(records) { rec =>
+        OptionT(getById(rec._1, lang))
+          .map(ProductAssemblyPart(_, rec._2, rec._3)).value
+      }
+    }
+
+    step2.map(_.flatten)
   }
 
-  def getAttribute(attributeId: Long, lang: String): Option[Attribute] = db.withConnection { conn =>
+  def getProductStorePrices(productId: Long): Future[Seq[ProductStorePrice]] = Future {
+    val sql = "SELECT * FROM inv_product_stores WHERE product_id = @productId"
+
+    val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      ProductStorePrice(rs.getLong("store_id"), DatabaseHelper.getNullable[BigDecimal]("price", rs))
+    } _
+
+    db.withConnection(query)
+  }
+
+  def getAttribute(attributeId: Long, lang: String): Future[Option[Attribute]] = Future {
     val sql =
       s"""
         SELECT
@@ -470,13 +390,15 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          WHERE a.id = @attributeId
        """
 
-    DatabaseHelper.fetchOne(sql, Map(
+    val query = DatabaseHelper.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
-    ))(hydrateAttribute)(conn)
+    ))(Hydrators.hydrateAttribute) _
+
+    db.withConnection(query)
   }
 
-  def getProductAttributes(productId: Long, lang: String): Set[ProductAttribute] = db.withConnection { conn =>
+  def getProductAttributes(productId: Long, lang: String): Future[Set[ProductAttribute]] = Future {
     val sql =
       s"""
         SELECT
@@ -501,15 +423,15 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          ORDER BY pa.id
        """
 
-    val spa: Seq[ProductAttribute] = DatabaseHelper.fetchMany[ProductAttribute](sql, Map(
+    val query = DatabaseHelper.fetchMany[ProductAttribute](sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString
-    ))(hydrateProductAttribute)(conn)
+    ))(Hydrators.hydrateProductAttribute) _
 
-    spa.to[ListSet]
+    db.withConnection(query).to[ListSet]
   }
 
-  def getProductAttribute(productId: Long, attributeId: Long, lang: String): Option[ProductAttribute] = db.withConnection { conn =>
+  def getProductAttribute(productId: Long, attributeId: Long, lang: String): Future[Option[ProductAttribute]] = Future {
     val sql =
       s"""
         SELECT
@@ -533,11 +455,13 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          WHERE pa.product_id = @productId AND pa.attribute_id = @attributeId
        """
 
-    DatabaseHelper.fetchOne(sql, Map(
+    val query = DatabaseHelper.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString,
       "attributeId" -> attributeId.toString,
-    ))(hydrateProductAttribute)(conn)
+    ))(Hydrators.hydrateProductAttribute) _
+
+    db.withConnection(query)
   }
 
   def getProductDepartment(departmentId: Long, lang: String): Future[Option[ProductDepartment]] = Future {
@@ -558,14 +482,15 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
       "langId" -> Lang.fromString(lang, 1).toString
     )
 
-    val fetch = DatabaseHelper.fetchOne(sql, params)(hydrateProductDepartment) _
+    val query = DatabaseHelper.fetchOne(sql, params)(Hydrators.hydrateProductDepartment) _
 
-    db.withConnection(fetch)
+    db.withConnection(query)
   }
 
-  def getProductCategory(id: Long, lang: String): Option[ProductCategory] = db.withConnection { conn =>
-    val sql =
-      """
+  def getProductCategory(id: Long, lang: String): Future[Option[ProductCategory]] = {
+    val step1 = Future {
+      val sql =
+        """
          SELECT
            c.*,
           COALESCE(t.label, dt.label) AS `c.name`,
@@ -576,18 +501,22 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          LEFT JOIN translations t ON t.description_id = c.description_id AND t.lang_id = @langId
          WHERE c.id = @categoryId
        """
-    val params = Map(
-      "langId" -> Lang.fromString(lang, 1).toString,
-      "categoryId" -> id.toString
-    )
+      val params = Map(
+        "langId" -> Lang.fromString(lang, 1).toString,
+        "categoryId" -> id.toString
+      )
 
-    val optCategory = DatabaseHelper.fetchOne(sql, params)(hydrateProductCategory)(conn)
+      val query = DatabaseHelper.fetchOne(sql, params)(Hydrators.hydrateProductCategory) _
 
-    optCategory.map { category =>
-      val parents = getCategoryParents(category.id)
-
-      category.copy(parents = parents)
+      db.withConnection(query)
     }
+
+    val step2 = for {
+      pc <- OptionT(step1)
+      parents <- OptionT.liftF(getCategoryParents(pc.id))
+    } yield pc.copy(parents = parents)
+
+    step2.value
   }
 
   def getProductCategories(lang: String): Future[Seq[(ProductCategory, Int)]] = Future {
@@ -612,7 +541,7 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
       )
 
       val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
-        val category = hydrateProductCategory(rs)
+        val category = Hydrators.hydrateProductCategory(rs)
         (category, rs.getInt("depth"))
       })(conn)
 
@@ -621,9 +550,8 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
   }
 
   def getAttributes(lang: String): Future[Seq[Attribute]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        s"""
+    val sql =
+      s"""
         SELECT
          	a.*,
          	COALESCE(t.label, dt.label) AS label,
@@ -639,16 +567,16 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
          ORDER BY label ASC
        """
 
-      DatabaseHelper.fetchMany(sql, Map(
-        "langId" -> Lang.fromString(lang, 1).toString,
-      ))(hydrateAttribute)(conn)
-    }
+    val query = DatabaseHelper.fetchMany(sql, Map(
+      "langId" -> Lang.fromString(lang, 1).toString,
+    ))(Hydrators.hydrateAttribute) _
+
+    db.withConnection(query)
   }
 
   def getProductDepartments(lang: String): Future[Seq[ProductDepartment]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        """
+    val sql =
+      """
         SELECT
           d.*,
           COALESCE(t.label, dt.label) AS `d.name`,
@@ -658,218 +586,106 @@ final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExec
         JOIN translations dt ON dt.description_id = d.description_id AND dt.is_default = 1
         LEFT JOIN translations t ON t.description_id = d.description_id AND t.lang_id = @langId
       """
-      val params = Map(
-        "langId" -> Lang.fromString(lang, 1).toString
-      )
+    val params = Map(
+      "langId" -> Lang.fromString(lang, 1).toString
+    )
 
-      DatabaseHelper.fetchMany(sql, params)(hydrateProductDepartment)(conn)
-    }
+    val query = DatabaseHelper.fetchMany(sql, params)(Hydrators.hydrateProductDepartment) _
+
+    db.withConnection(query)
   }
 
-  private def hydrateProductChild(product: Product, rs: ResultSet): ProductChild =
-    ProductChild(
-      rs.getLong("id"),
-      product,
-      rs.getString("type"),
-      rs.getLong("quantity"),
-      rs.getBoolean("is_visible"),
-      rs.getBoolean("is_compiled")
-    )
+  private def getProductChildren(productId: Long, lang: String): Future[Seq[ProductChild]] = {
+    val step1 = Future {
+      val sql = "SELECT id, sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
+      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+        (
+          rs.getLong("sub_product_id"),
+          rs.getLong("id"),
+          rs.getString("type"),
+          rs.getLong("quantity"),
+          rs.getBoolean("is_visible"),
+          rs.getBoolean("is_compiled")
+        )
+      } _
 
-  private def hydrateAttributeValue(rs: ResultSet): AttributeValue = {
-    val ts = rs.getTimestamp("modification_date")
-    val updatedAt = if (rs.wasNull()) None else Option(ts.toLocalDateTime)
-
-    AttributeValue(
-      rs.getLong("id"),
-      rs.getString("sku"),
-      Description(
-        rs.getString("name"),
-        rs.getString("short_description"),
-        rs.getString("long_description")
-      ),
-      rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt
-    )
-  }
-
-  private def hydrateProduct(rs: ResultSet): Product = {
-    val metadata = Map(
-      "mpn" -> DatabaseHelper.getNullable[String]("mpn", rs).getOrElse(""),
-      "imageUrl" -> DatabaseHelper.getNullable[String]("image_url", rs).getOrElse(""),
-      "isKit" -> rs.getInt("is_kit").toString,
-      "stickerId" -> rs.getString("sticker_template_id"),
-      "extrusionId" -> rs.getString("extrusion_template_id"),
-    )
-
-    val tags = DatabaseHelper.getNullable[String]("tags", rs) match {
-      case Some("") => List[String]()
-      case Some(s) => s.split(",").toList
-      case _ => List[String]()
+      db.withConnection(query)
     }
 
-    val department = DatabaseHelper.getNullable[String]("d.code", rs).map { _ =>
-      hydrateProductDepartment(rs)
+    val step2 = step1.flatMap { records =>
+      Future.traverse(records) { rec =>
+        (for {
+          product <- OptionT(getById(rec._1, lang))
+        } yield ProductChild(rec._2, product, rec._3, rec._4, rec._5, rec._6)).value
+      }
     }
 
-    Product(
-      rs.getLong("id"),
-      rs.getString("hash"),
-      rs.getLong("category_id"),
-      rs.getString("sku"),
-      rs.getLong("p.description_id"),
-      Description(rs.getString("p.name"), rs.getString("p.short_description"), rs.getString("p.long_description")),
-      rs.getDouble("price"),
-      rs.getDouble("cost_price"),
-      tags = tags,
-      category = Some(hydrateProductCategory(rs)),
-      department = department,
-      createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
-      metadata = metadata,
-      isCustom = rs.getBoolean("is_custom"),
-      isEnabled = rs.getBoolean("status"),
-    )
+    step2.map(_.flatten)
   }
 
-  private def hydrateProductAttribute(rs: ResultSet): ProductAttribute = {
-    ProductAttribute(
-      id = rs.getLong("record_id"),
-      attribute = Attribute(
-        rs.getLong("attribute_id"),
-        rs.getString("attribute_code"),
-        rs.getString("attribute_data_type"),
-        rs.getString("attribute_input_type"),
-        Description(
-          rs.getString("attribute_name"),
-          rs.getString("attribute_short_description"),
-          rs.getString("attribute_long_description")
-        ),
-        rs.getTimestamp("attribute_creation_date").toLocalDateTime,
-        DatabaseHelper.getNullable[LocalDateTime]("attribute_modification_date", rs)
-      ),
-      value = rs.getString("value"),
-      valueId = DatabaseHelper.getNullable[Long]("value_id", rs),
-      valueSku = DatabaseHelper.getNullable[String]("value_sku", rs),
-      isEditable = rs.getBoolean("is_editable"),
-      isReference = rs.getBoolean("is_reference")
-    )
-  }
-
-  private def hydrateProductCategory(rs: ResultSet): ProductCategory = {
-    ProductCategory(
-      rs.getLong("c.id"),
-      rs.getString("c.code"),
-      Description(
-        rs.getString("c.name"),
-        rs.getString("c.short_description"),
-        rs.getString("c.long_description")
-      ),
-      createdAt = rs.getTimestamp("c.creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("c.modification_date", rs)
-    )
-  }
-
-  private def hydrateProductDepartment(rs: ResultSet): ProductDepartment = {
-    ProductDepartment(
-      rs.getLong("d.id"),
-      rs.getString("d.code"),
-      Description(
-        rs.getString("d.name"),
-        rs.getString("d.short_description"),
-        rs.getString("d.long_description")
-      ),
-      createdAt = rs.getTimestamp("d.creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("d.modification_date", rs)
-    )
-  }
-
-  private def getProductChildren(productId: Long, lang: String): Seq[ProductChild] = db.withConnection { conn =>
-    val sql = "SELECT id, sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
-
-    DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
-      val childProductId = rs.getLong("sub_product_id")
-
-      get(childProductId, lang)
-        .map(product => hydrateProductChild(product, rs))
-        .getOrElse(throw new RuntimeException(s"$childProductId does not exist"))
-    }(conn)
-  }
-
-  private def getCategoryParents(categoryId: Long): SortedSet[String] = db.withConnection { conn =>
+  private def getCategoryParents(categoryId: Long): Future[SortedSet[String]] = Future {
     val sql = "SELECT DISTINCT parent.code FROM inv_product_categories actual JOIN inv_product_categories parent ON parent.left_id < actual.left_id AND parent.right_id > actual.right_id WHERE actual.id = @categoryId ORDER BY parent.left_id DESC"
-    val parents = DatabaseHelper.fetchMany(sql, Map("categoryId" -> categoryId.toString))(_.getString("code"))(conn)
+    val query = DatabaseHelper.fetchMany(sql, Map("categoryId" -> categoryId.toString))(_.getString("code")) _
 
-    parents.to[SortedSet]
+    db.withConnection(query).to[SortedSet]
   }
 
-  private def handleInclusions(product: Product, lang: String, include: Seq[String]) = {
-    include.foldLeft(product) { (p, include) =>
-      include match {
-        case ProductInclusions.ATTRIBUTES => p.copy(attributes = getProductAttributes(product.id, lang))
-        case ProductInclusions.CHILDREN => p.copy(children = getProductChildren(product.id, lang))
-        case ProductInclusions.RULES => p.copy(rules = getProductRules(product.id, lang))
-        case ProductInclusions.ASSEMBLY_PARTS => p.copy(assemblyParts = getProductAssemblyParts(product.id, lang))
-        case _ => p
+  def handleInclusions(product: Product, lang: String, include: Seq[String]): Future[Product] = {
+    val futures = include.map(s => s match {
+      case ProductInclusions.ATTRIBUTES =>
+        getProductAttributes(product.id, lang).map { data =>
+          (s, product.copy(attributes = data))
+        }
+      case ProductInclusions.CHILDREN =>
+        getProductChildren(product.id, lang).map { data =>
+          (s, product.copy(children = data))
+        }
+      case ProductInclusions.RULES =>
+        getProductRules(product.id, lang).map { data =>
+          (s, product.copy(rules = data))
+        }
+      case ProductInclusions.ASSEMBLY_PARTS =>
+        getProductAssemblyParts(product.id, lang).map { data =>
+          (s, product.copy(assemblyParts = data))
+        }
+      case _ => Future.successful((s, product))
+    })
+
+    Future.sequence(futures).map { tuples =>
+      tuples.foldLeft(product) {
+        (p, tuple) =>
+          tuple match {
+            case (ProductInclusions.ATTRIBUTES, other) => p.copy(attributes = other.attributes)
+            case (ProductInclusions.CHILDREN, other) => p.copy(children = other.children)
+            case (ProductInclusions.RULES, other) => p.copy(rules = other.rules)
+            case (ProductInclusions.ASSEMBLY_PARTS, other) => p.copy(assemblyParts = other.assemblyParts)
+            case _ => p
+          }
       }
     }
   }
 
-  private def hydrateProductRule(product: Product, rs: ResultSet): ProductRule =
-    ProductRule(
-      id = rs.getLong("id"),
-      product = product,
-      newPrice = rs.getDouble("price"),
-      ruleType = rs.getString("type"),
-      quantity = rs.getInt("quantity"),
-      maxAllowedQuantity = rs.getInt("max_quantity")
-    )
-
-  private def hydrateTranslation(rs: ResultSet): Translation =
-    Translation(
-      id = rs.getLong("id"),
-      lang = Lang.fromId(rs.getInt("lang_id"), "fr"),
-      description = hydrateDescription(rs),
-      isDefault = rs.getBoolean("is_default")
-    )
-
-  private def hydrateDescription(rs: ResultSet): Description =
-    Description(
-      rs.getString("label"),
-      rs.getString("short_description"),
-      rs.getString("long_description")
-    )
-
-  private def hydrateAttribute(rs: ResultSet): Attribute =
-    Attribute(
-      rs.getLong("id"),
-      rs.getString("code"),
-      rs.getString("data_type"),
-      rs.getString("input_type"),
-      hydrateDescription(rs),
-      rs.getTimestamp("creation_date").toLocalDateTime,
-      DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs)
-    )
-
-  def applyProductAttributeOverrides(product: Product, attributeOverrides: Seq[(String, String)], lang: String): Product = {
+  def applyProductAttributeOverrides(product: Product, attributeOverrides: Seq[(String, String)], lang: String): Future[Product] = {
     val overridenAttributes: Seq[(ProductAttribute, String)] = attributeOverrides.flatMap(tuple => product.getAttribute(tuple._1) match {
       case Some(productAttribute) => Some(productAttribute, tuple._2)
       case _ => None
     })
 
-    val productWithOverridenAttributes = overridenAttributes.foldLeft(product) {
-      (product, tuple) =>
+    val productWithOverridenAttributes = overridenAttributes.foldLeft(Future.successful(product)) {
+      (productF, tuple) =>
         (tuple._1, tuple._2, tuple._1.attribute.inputType) match {
           case (productAttribute, newValue, "select") =>
-            // Get the corresponding value
-            getAttributeValue(newValue.toLong, lang).map { attributeValue =>
-              product.replaceAttribute(productAttribute, productAttribute.copy(
-                value = attributeValue.description.name,
-                valueId = Some(attributeValue.id),
-                valueSku = Some(attributeValue.sku)
-              ))
-            } getOrElse product
-          case (productAttribute, newValue, _) => product.replaceAttribute(productAttribute, productAttribute.copy(value = newValue))
+            productF.flatMap { p =>
+              // Get the corresponding value
+              (for {
+                av <- OptionT(getAttributeValue(newValue.toLong, lang))
+              } yield p.replaceAttribute(productAttribute, productAttribute.copy(
+                value = av.description.name,
+                valueId = Some(av.id),
+                valueSku = Some(av.sku)
+              ))).getOrElse(p)
+            }
+          case (productAttribute, newValue, _) => productF.map(p => p.replaceAttribute(productAttribute, productAttribute.copy(value = newValue)))
         }
     }
 

@@ -19,6 +19,7 @@ GET           /extrusions/all                                                   
 GET           /productDepartments/all                                                                                             inventory.controllers.ProductController.getDepartments(lang: Option[String])
 GET           /attributes/all                                                                                                     inventory.controllers.ProductController.getAttributes(lang: Option[String])
 
+# Products (by store)
 GET           /store/products                                                                                                     inventory.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
 GET           /store/products/$id<[0-9]+>                                                                                         inventory.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
 GET           /store/products/$ids<[0-9]+,+[0-9,]*>                                                                               inventory.controllers.StoreProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])

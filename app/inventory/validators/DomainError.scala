@@ -6,7 +6,7 @@ sealed trait DomainError {
 }
 
 case object GenericError extends DomainError {
-  override val errorMessage = ""
+  override val errorMessage = "An error occurred."
   override val code = "ERROR"
 }
 

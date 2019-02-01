@@ -1,9 +1,12 @@
 package infrastructure
 
+import inventory.validators.DomainError
 import play.api.libs.json.{JsValue, Json, Writes}
 
 object ApiError {
   implicit val writes: Writes[ApiError] = Json.writes[ApiError]
+
+  def fromDomainError(err: DomainError): ApiError = ApiError(err.code, err.errorMessage)
 }
 
 case class ApiError(code: String, message: String) {

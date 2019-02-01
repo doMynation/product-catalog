@@ -6,27 +6,26 @@ import infrastructure.{ApiError, ApiResponse}
 import inventory.ProductService
 import inventory.dtos.{AttributeIdValuePair, ProductDepartmentDTO}
 import inventory.entities.Admin.ProductEditData
-import inventory.entities.ProductDepartment
+import inventory.entities.{Product, ProductDepartment}
 import inventory.forms.EditProductForm
-import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
+import inventory.repositories.{ProductInclusions, ProductRepository2, ProductWriteRepository}
 import inventory.util.FileUploader
-import inventory.validators.{DepartmentNotFound, DomainError, InvalidPayload}
-import play.api.{Logger}
-import play.api.db.Database
-import play.api.libs.json.{JsError, JsSuccess, Json}
+import inventory.validators.{DepartmentNotFound, DomainError, GenericError, InvalidPayload}
+import play.api.Logger
+import play.api.libs.json.{Json}
 import play.api.mvc.{AbstractController, ControllerComponents}
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
-import cats.data.EitherT
+import cats.data.{EitherT, OptionT}
 import cats.implicits._
+import shared.Types.ServiceResponse
 
 /**
   * Controller for the admin backend of the product catalog.
   */
 class AdminProductController @Inject()(
                                         cc: ControllerComponents,
-                                        productReadRepository: ProductRepository,
-                                        productWriteRepository: ProductWriteRepository,
+                                        productReadRepo: ProductRepository2,
+                                        productWriteRepo: ProductWriteRepository,
                                         productService: ProductService,
                                         uploader: FileUploader,
                                         authAction: AuthenticatedAction
@@ -38,10 +37,8 @@ class AdminProductController @Inject()(
     val program = for {
       dto <- EitherT.fromOption[Future](json.asOpt[ProductDepartmentDTO], InvalidPayload) // Parse JSON
       _ <- EitherT.fromEither[Future](dto.validate) // Validate payload
-      deptId <- EitherT.right[DomainError](productWriteRepository.createDepartment(dto)) // Create dept
-      dept <- EitherT.fromEither[Future](
-        productReadRepository.getProductDepartment(deptId, "en").toRight[DomainError](DepartmentNotFound(deptId)) // Fetch the new dept
-      )
+      deptId <- EitherT.rightT[Future, DomainError](productWriteRepo.createDepartment(dto)) // Create dept
+      dept <- EitherT.fromOptionF[Future, DomainError, ProductDepartment](productReadRepo.getProductDepartment(deptId, "en"), DepartmentNotFound(deptId)) // Fetch the new product
     } yield dept
 
     program
@@ -63,138 +60,103 @@ class AdminProductController @Inject()(
     }
   }
 
-  def get(productId: Long, lang: Option[String]) = authAction {
+  def get(productId: Long, lang: Option[String]) = authAction.async {
     val chosenLang = lang.getOrElse("en")
     val includes = List(ProductInclusions.ATTRIBUTES, ProductInclusions.CATEGORY, ProductInclusions.CHILDREN, ProductInclusions.RULES)
 
     // Get the product and its translations
-    val dataOpt = for {
-      product <- productReadRepository.get(productId, chosenLang, includes)
-      translations = productReadRepository.getTranslations(product.descriptionId)
+    val program = for {
+      product <- OptionT(productReadRepo.getById(productId, chosenLang, includes))
+      translations <- OptionT.liftF(productReadRepo.getTranslations(product.descriptionId))
     } yield ProductEditData(product, translations)
 
-    dataOpt map { productData =>
-      Ok(ApiResponse(Json.obj(
-        "product" -> productData.product,
-        "translations" -> productData.translations
-      )).toJson)
-    } getOrElse {
-      NotFound(s"Product id $productId not found")
-    }
+    program
+      .map(productData =>
+        Ok(ApiResponse(Json.obj(
+          "product" -> productData.product,
+          "translations" -> productData.translations
+        )).toJson)
+      )
+      .getOrElse(NotFound(s"Product id $productId not found"))
   }
 
-  def delete(productId: Long) = authAction.async {
-    productWriteRepository
-      .deleteProduct(productId)
-      .map(_ => Ok)
-      .recover {
-        case t: Throwable =>
-          Logger.error(t.toString)
-          ServiceUnavailable("Unexpected error")
-      }
+  def delete(productId: Long) = authAction {
+    productWriteRepo.deleteProduct(productId)
+
+    Ok
   }
 
-  def enable(productId: Long) = authAction.async {
-    productWriteRepository
-      .updateProductFields(productId, Map("status" -> "1"))
-      .map(_ => Ok)
-      .recover {
-        case t: Throwable =>
-          Logger.error(t.toString)
-          ServiceUnavailable("Unexpected error")
-      }
+  def enable(productId: Long) = authAction {
+    productWriteRepo.updateProductFields(productId, Map("status" -> "1"))
+
+    Ok
   }
 
-  def disable(productId: Long) = authAction.async {
-    productWriteRepository.updateProductFields(productId, Map("status" -> "0"))
-      .map(_ => Ok)
-      .recover {
-        case t: Throwable =>
-          Logger.error(t.toString)
-          ServiceUnavailable("Unexpected error")
-      }
+  def disable(productId: Long) = authAction {
+    productWriteRepo.updateProductFields(productId, Map("status" -> "0"))
+
+    Ok
   }
 
-  def duplicate(productId: Long) = authAction {
-    val productTry = productService.cloneProduct(productId)
+  def duplicate(productId: Long) = authAction.async {
+    val response: ServiceResponse[Product] = productService.cloneProduct(productId)
 
-    productTry match {
-      case Success(product) => Ok(ApiResponse(product).toJson)
-      case Failure(t) =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    EitherT(response)
+      .map(product => Ok(ApiResponse(product).toJson))
+      .valueOr(err => BadRequest(ApiError.fromDomainError(err).toJson))
   }
 
-  def update(productId: Long) = authAction(parse.json) { req =>
+  def update(productId: Long) = authAction(parse.json).async { req =>
     val data = (req.body \ "fields").validate[EditProductForm]
 
-    data match {
-      case form: JsSuccess[EditProductForm] =>
-        productService.updateProduct(productId, form.get) match {
-          case Left(error) => BadRequest(ApiError(error.code, error.errorMessage).toJson)
-          case _ => Ok(ApiResponse.empty.toJson)
-        }
-      case e: JsError =>
-        println(e)
-        BadRequest("Invalid parameters")
-    }
+    val t = for {
+      form <- EitherT.fromOption[Future](data.asOpt, BadRequest("Invalid parameters"))
+      _ <- EitherT(productService.updateProduct(productId, form)).leftMap(err => BadRequest(ApiError(err.code, err.errorMessage).toJson))
+    } yield Ok(ApiResponse.empty.toJson)
+
+    t.valueOr(err => err)
   }
 
-  def bulkEnable() = authAction.async(parse.json) { req =>
+  def bulkEnable() = authAction(parse.json) { req =>
     val json = req.body
     val po = (json \ "productIds").asOpt[Seq[Long]]
 
     po.map { productIds =>
-      productWriteRepository
-        .bulkUpdateProduct(productIds, Map("status" -> "1"))
-        .map(_ => Ok)
-        .recover {
-          case t: Throwable =>
-            Logger.error(t.toString)
-            ServiceUnavailable("Unexpected error")
-        }
+      productWriteRepo.bulkUpdateProduct(productIds, Map("status" -> "1"))
+      Ok
     } getOrElse {
-      Future.successful(BadRequest("Invalid `productIds` parameter"))
+      BadRequest("Invalid `productIds` parameter")
     }
   }
 
-  def bulkDisable() = authAction.async(parse.json) { req =>
+  def bulkDisable() = authAction(parse.json) { req =>
     val json = req.body
-    val value = (json \ "productIds").asOpt[Seq[Long]]
+    val po = (json \ "productIds").asOpt[Seq[Long]]
 
-    value.map { productIds =>
-      productWriteRepository
-        .bulkUpdateProduct(productIds, Map("status" -> "0"))
-        .map(_ => Ok)
-        .recover {
-          case t: Throwable =>
-            Logger.error(t.toString)
-            ServiceUnavailable("Unexpected error")
-        }
+    po.map { productIds =>
+      productWriteRepo.bulkUpdateProduct(productIds, Map("status" -> "0"))
+      Ok
     } getOrElse {
-      Future.successful(BadRequest("Invalid `productIds` parameter"))
+      BadRequest("Invalid `productIds` parameter")
     }
   }
 
-  def bulkAddAttributes = authAction(parse.json) { req =>
+  def bulkAddAttributes = authAction(parse.json).async { req =>
     val json = req.body
     val productIds = (json \ "productIds").asOpt[List[Int]]
     val attributes = (json \ "attributes").asOpt[List[AttributeIdValuePair]]
+    val error: DomainError = GenericError
 
-    val ot = for {
-      ids <- productIds
-      pairs <- attributes
-    } yield Try {
-      ids.foreach(id => productService.addProductAttributes(id, pairs))
-    }
+    val program = for {
+      ids <- EitherT.fromOption[Future](productIds, error)
+      pairs <- EitherT.fromOption[Future](attributes, error)
+      _ <- ids.traverse(
+        id => EitherT(productService.addProductAttributes(id, pairs))
+      )
+    } yield ()
 
-    ot match {
-      case Some(Success(_)) => Ok
-      case None => BadRequest("Invalid parameters")
-      case Some(Failure(t)) =>
-        Logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    program
+      .map(_ => Ok)
+      .valueOr(err => BadRequest(ApiError.fromDomainError(err).toJson))
   }
 }

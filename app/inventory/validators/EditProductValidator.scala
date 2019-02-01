@@ -2,19 +2,17 @@ package inventory.validators
 
 import inventory.dtos._
 import inventory.forms.EditProductForm
-import inventory.repositories.{MiscRepository, ProductRepository}
+import inventory.repositories.{MiscRepository, ProductRepository2}
 import shared.dtos.TranslationDTO
-import cats.data.OptionT
-import cats.syntax.traverse._
-import cats.instances.either._
-import cats.instances.option._
-import cats.instances.list._
-import cats.instances._
-import scala.concurrent.duration._
-import scala.concurrent.Await
-import scala.util.{Success, Try}
+import cats._
+import cats.data._
+import cats.implicits._
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Try}
 
-object EditProductValidator {
+final class EditProductValidator()(implicit ec: ExecutionContext) {
+  type Validate[T] = EitherT[Future, DomainError, T]
+
   //  storePrices: Seq[ProductStorePriceDTO] = List(),
   //  assemblyParts: Seq[ProductAssemblyPartDTO] = List(),
 
@@ -24,19 +22,23 @@ object EditProductValidator {
   def validateSku(value: String): Either[DomainError, String] =
     Either.cond(value.matches("^[\\w-]+$"), value, InvalidSku)
 
-  def validateCategoryId(value: Long, pr: ProductRepository): Either[DomainError, Long] =
-    Either.cond(
-      value > 0 && pr.getProductCategory(value, "en").isDefined,
-      value,
-      InvalidCategoryId
-    )
+  def validateCategoryId(value: Long, pr: ProductRepository2): Validate[Long] = {
+    val error: DomainError = InvalidCategoryId
 
-  def validateDepartmentId(value: Option[Long], pr: ProductRepository): Either[DomainError, Option[Long]] =
-    Either.cond(
-      value.isEmpty || value.filter(_ > 0).flatMap(pr.getProductDepartment(_, "en")).isDefined,
-      value,
-      InvalidDepartmentId
-    )
+    for {
+      _ <- EitherT.cond[Future](value > 0, value, error)
+      _ <- EitherT.fromOptionF(pr.getProductCategory(value, "en"), error)
+    } yield value
+  }
+
+  def validateDepartmentId(value: Option[Long], pr: ProductRepository2): Validate[Option[Long]] = {
+    val error: DomainError = InvalidDepartmentId
+
+    for {
+      _ <- EitherT.cond[Future](value.isEmpty || value.get > 0, value, error)
+      _ <- EitherT.fromOptionF(pr.getProductDepartment(value.get, "en"), error)
+    } yield value
+  }
 
   def validatePrice(value: Double): Either[DomainError, Double] =
     Either.cond(
@@ -60,84 +62,89 @@ object EditProductValidator {
       InvalidTags
     )
 
-  def validateAttributes(value: List[AttributeIdValuePair], productRepository: ProductRepository): Either[DomainError, List[ProductAttributeDTO]] = {
+  def validateAttributes(value: List[AttributeIdValuePair], pr: ProductRepository2): Validate[List[ProductAttributeDTO]] = {
     // @todo: Validate value based on attribute's data and input type
     // @todo: Validate existence of value (if reference)
-    value.traverse(pair =>
-      productRepository
-        .getAttribute(pair.id, "en")
-        .map(attr => ProductAttributeDTO(
-          attr.id,
-          pair.value,
-          None,
-          pair.isEditable,
-          attr.inputType == "select"
-        ))
-        .toRight(InvalidAttributes)
-    )
+    val error: DomainError = InvalidAttributes
+    value.traverse { pair =>
+      for {
+        attr <- EitherT.fromOptionF(pr.getAttribute(pair.id, "en"), error)
+      } yield ProductAttributeDTO(
+        attr.id,
+        pair.value,
+        None,
+        pair.isEditable,
+        attr.inputType == "select"
+      )
+    }
   }
 
-  def validateChildren(value: List[ProductChildDTO], pr: ProductRepository): Either[DomainError, List[ProductChildDTO]] = {
+  def validateChildren(value: List[ProductChildDTO], pr: ProductRepository2): Validate[List[ProductChildDTO]] = {
+    val error: Long => DomainError = ProductNotFound(_)
+
     value.traverse(child =>
       for {
-        _ <- child.validate
-        _ <- pr.get(child.productId, "en").toRight(ProductNotFound(child.productId))
+        _ <- EitherT.fromEither[Future](child.validate)
+        _ <- EitherT.fromOptionF(pr.getById(child.productId, "en"), error(child.productId))
       } yield child
     )
   }
 
-  def validateSalesRules(value: List[ProductRuleDTO], pr: ProductRepository): Either[DomainError, List[ProductRuleDTO]] =
+  def validateSalesRules(value: List[ProductRuleDTO], pr: ProductRepository2): Validate[List[ProductRuleDTO]] = {
+    val error: Long => DomainError = ProductNotFound(_)
+
     value.traverse { rule =>
       for {
-        _ <- rule.validate
-        _ <- pr.get(rule.productId, "en").toRight(ProductNotFound(rule.productId))
+        _ <- EitherT.fromEither[Future](rule.validate)
+        _ <- EitherT.fromOptionF(pr.getById(rule.productId, "en"), error(rule.productId))
       } yield rule
     }
+  }
 
-  def validateMetadata(value: Map[String, String], mr: MiscRepository): Either[DomainError, Map[String, String]] = {
-    val isKit = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata("isKit"))
-    val extrusionId = value.get("extrusionId").map(id => validateExtrusion(id, mr)).getOrElse(Right(value))
-    val stickerId = value.get("stickerId") match {
-      case Some("") => Right(value)
+  def validateMetadata(value: Map[String, String], mr: MiscRepository): Validate[Map[String, String]] = {
+    val isKit: Either[DomainError, String] = value.get("isKit").filter(v => v == "1" || v == "0").toRight(InvalidMetadata("isKit"))
+    val extrusionId = value.get("extrusionId")
+      .map(id => validateExtrusion(id, mr))
+      .getOrElse(EitherT.rightT[Future, DomainError](""))
+    val stickerId: Either[DomainError, String] = value.get("stickerId") match {
+      case Some("") => Right("")
       case Some(id) if !Set("1", "2").contains(id) => Left(InvalidMetadata("stickerId"))
-      case _ => Right(value)
+      case _ => Right("")
     }
 
     for {
-      _ <- isKit
       _ <- extrusionId
-      _ <- stickerId
+      _ <- EitherT.fromEither[Future](isKit)
+      _ <- EitherT.fromEither[Future](stickerId)
     } yield value
   }
 
-  def validateExtrusion(id: String, mr: MiscRepository): Either[DomainError, String] = {
-    if (id.trim.isEmpty) return Right(id)
+  def validateExtrusion(id: String, mr: MiscRepository): EitherT[Future, DomainError, String] = {
+    if (id.trim.isEmpty) return EitherT.rightT[Future, DomainError](id)
 
-    val long = Try(id.toLong)
+    val error: DomainError = InvalidMetadata("extrusionId")
+    val result = for {
+      extId <- EitherT.fromEither[Future](Try(id.toLong).map(Right(_)).getOrElse(Left(error)))
+      _ <- EitherT.fromOptionF(mr.getExtrusion(extId), error)
+    } yield id
 
-    long match {
-      case Success(extrusionId) =>
-        val f = mr.getExtrusion(extrusionId)
-        val e = Await.result(f, 3 second)
-        e.map(_ => id).toRight(InvalidMetadata("extrusionId"))
-      case _ => Left(InvalidMetadata("extrusionId"))
-    }
+    result
   }
 
-  def validate(form: EditProductForm, pr: ProductRepository, mr: MiscRepository): Either[DomainError, ProductDTO] = {
-    for {
-      _ <- validateHash(form.hash)
-      _ <- validateSku(form.sku)
+  def validate(form: EditProductForm, pr: ProductRepository2, mr: MiscRepository): Future[Either[DomainError, ProductDTO]] =
+    (for {
+      _ <- EitherT.fromEither[Future](validateHash(form.hash))
+      _ <- EitherT.fromEither[Future](validateSku(form.sku))
       _ <- validateCategoryId(form.categoryId, pr)
       _ <- validateDepartmentId(form.departmentId, pr)
-      _ <- validateTranslations(form.translations)
-      _ <- validatePrice(form.price)
-      _ <- validatePrice(form.costPrice)
-      _ <- validateTags(form.tags)
+      _ <- EitherT.fromEither[Future](validateTranslations(form.translations))
+      _ <- EitherT.fromEither[Future](validatePrice(form.price))
+      _ <- EitherT.fromEither[Future](validatePrice(form.costPrice))
+      _ <- EitherT.fromEither[Future](validateTags(form.tags))
       attributeDtos <- validateAttributes(form.attributes.toList, pr)
       _ <- validateChildren(form.children.toList, pr)
       _ <- validateMetadata(form.metadata, mr)
       _ <- validateSalesRules(form.rules.toList, pr)
-    } yield form.toDto.copy(attributes = attributeDtos)
-  }
+    } yield form.toDto.copy(attributes = attributeDtos)).value
 }
+
