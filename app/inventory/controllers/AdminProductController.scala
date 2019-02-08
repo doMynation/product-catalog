@@ -8,7 +8,7 @@ import inventory.dtos.{AttributeIdValuePair, ProductDepartmentDTO}
 import inventory.entities.Admin.ProductEditData
 import inventory.entities.{Product, ProductDepartment}
 import inventory.forms.EditProductForm
-import inventory.repositories.{ProductInclusions, ProductRepository2, ProductWriteRepository}
+import inventory.repositories.{ProductInclusions, ProductRepository, ProductWriteRepository}
 import inventory.util.FileUploader
 import inventory.validators.{DepartmentNotFound, DomainError, GenericError, InvalidPayload}
 import play.api.Logger
@@ -24,7 +24,7 @@ import shared.Types.ServiceResponse
   */
 class AdminProductController @Inject()(
                                         cc: ControllerComponents,
-                                        productReadRepo: ProductRepository2,
+                                        productReadRepo: ProductRepository,
                                         productWriteRepo: ProductWriteRepository,
                                         productService: ProductService,
                                         uploader: FileUploader,

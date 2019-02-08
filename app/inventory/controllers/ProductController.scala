@@ -1,11 +1,10 @@
 package inventory.controllers
 
 import javax.inject._
-
+import authentication.actions.ApiAction
 import infrastructure.ApiResponse
-import inventory.actions.AuthenticatedAction
 import inventory.entities.AttributeValue
-import inventory.repositories.{ProductRepository2}
+import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
@@ -14,12 +13,12 @@ import play.api.Logger
 import cats.implicits._
 
 class ProductController @Inject()(
-                                   authAction: AuthenticatedAction,
+                                   apiAction: ApiAction,
                                    cc: ControllerComponents,
-                                   productRepo: ProductRepository2,
+                                   productRepo: ProductRepository,
                                  )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
-  def getAttributes(lang: Option[String]) = authAction.async {
+  def getAttributes(lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     for {
@@ -34,7 +33,7 @@ class ProductController @Inject()(
     } yield Ok(Json.toJson(attrsWithValues))
   }
 
-  def getDepartments(lang: Option[String]) = authAction.async {
+  def getDepartments(lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     productRepo.getProductDepartments(chosenLang).map { departments =>
@@ -46,7 +45,7 @@ class ProductController @Inject()(
     }
   }
 
-  def getCategories(lang: Option[String]) = authAction.async {
+  def getCategories(lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     productRepo.getProductCategories(chosenLang).map { categories =>
@@ -58,7 +57,7 @@ class ProductController @Inject()(
     }
   }
 
-  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = authAction.async {
+  def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = apiAction.async {
     val ids = idsString.split(",").map(_.toInt).toList
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
@@ -72,7 +71,7 @@ class ProductController @Inject()(
     }
   }
 
-  def get(id: Long, lang: Option[String], include: Option[String]) = authAction.async {
+  def get(id: Long, lang: Option[String], include: Option[String]) = apiAction.async {
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
@@ -84,7 +83,7 @@ class ProductController @Inject()(
       }
   }
 
-  def getBySku(sku: String, lang: Option[String], include: Option[String]) = authAction.async {
+  def getBySku(sku: String, lang: Option[String], include: Option[String]) = apiAction.async {
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
@@ -96,7 +95,7 @@ class ProductController @Inject()(
       }
   }
 
-  def getRule(id: Long, lang: Option[String]) = authAction.async {
+  def getRule(id: Long, lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     productRepo
@@ -107,7 +106,7 @@ class ProductController @Inject()(
       }
   }
 
-  def getRules(id: Long, lang: Option[String]) = authAction.async {
+  def getRules(id: Long, lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     productRepo
@@ -115,13 +114,13 @@ class ProductController @Inject()(
       .map(rules => Ok(Json.toJson(rules)))
   }
 
-  def getAttributeValues(attributeId: Long, lang: Option[String]) = authAction.async {
+  def getAttributeValues(attributeId: Long, lang: Option[String]) = apiAction.async {
     productRepo
       .getAttributeValues(attributeId, lang.getOrElse("en"))
       .map(values => Ok(Json.toJson(values)))
   }
 
-  def search(lang: Option[String], include: Option[String]) = authAction.async { req =>
+  def search(lang: Option[String], include: Option[String]) = apiAction.async { req =>
     val sr = SearchRequest.fromQueryString(req.queryString)
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")
@@ -140,7 +139,7 @@ class ProductController @Inject()(
     }
   }
 
-  def getCategory(id: Long, lang: Option[String]) = authAction.async {
+  def getCategory(id: Long, lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
 
     productRepo

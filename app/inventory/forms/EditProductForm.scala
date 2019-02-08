@@ -3,7 +3,7 @@ package inventory.forms
 import java.time.LocalDateTime
 
 import inventory.dtos._
-import inventory.repositories.{MiscRepository, ProductRepository2}
+import inventory.repositories.{MiscRepository, ProductRepository}
 import inventory.validators.{DomainError, EditProductValidator}
 import shared.dtos.TranslationDTO
 import play.api.libs.json._
@@ -93,7 +93,7 @@ case class EditProductForm(
                             isCustom: Boolean = false,
                             isEnabled: Boolean = true) {
 
-  def validate(productRepo: ProductRepository2, miscRepo: MiscRepository)(implicit ec: ExecutionContext): Future[Either[DomainError, ProductDTO]] =
+  def validate(productRepo: ProductRepository, miscRepo: MiscRepository)(implicit ec: ExecutionContext): Future[Either[DomainError, ProductDTO]] =
     (new EditProductValidator).validate(this, productRepo, miscRepo)
 }
 

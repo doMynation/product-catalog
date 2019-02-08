@@ -5,18 +5,16 @@ import authentication.actions.ApiAction
 import cats.data.OptionT
 import cats.implicits._
 import infrastructure.ApiResponse
-import inventory.actions.AuthenticatedAction
-import inventory.repositories.{ProductRepository2, StoreProductRepository}
+import inventory.repositories.{ProductRepository, StoreProductRepository}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreProductController @Inject()(
-                                        authAction: AuthenticatedAction,
                                         apiAction: ApiAction,
                                         cc: ControllerComponents,
-                                        productRepo: ProductRepository2,
+                                        productRepo: ProductRepository,
                                         storeRepo: StoreProductRepository,
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 

@@ -14,7 +14,7 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 import shared.Types.Product
 
-final class ProductRepository2 @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
+final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
 
   def getById(id: Long, lang: String): Future[Option[Product]] =
     getProduct("id", id.toString, lang)

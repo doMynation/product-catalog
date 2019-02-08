@@ -1,9 +1,8 @@
 package inventory
 
-import java.sql.Connection
 import javax.inject.Inject
 import inventory.dtos.{AttributeIdValuePair, ProductAttributeDTO, ProductDTO}
-import inventory.entities.{Product, ProductAttribute}
+import inventory.entities.{Attribute, Product, ProductAttribute}
 import inventory.forms.EditProductForm
 import inventory.repositories._
 import inventory.validators._
@@ -14,7 +13,7 @@ import cats.data.{EitherT, OptionT}
 import cats.implicits._
 import shared.Types.ServiceResponse
 
-final class ProductService @Inject()(readRepo: ProductRepository2, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database)(implicit ec: ExecutionContext) {
+final class ProductService @Inject()(readRepo: ProductRepository, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database)(implicit ec: ExecutionContext) {
 
   def updateProduct(productId: Long, form: EditProductForm): ServiceResponse[Unit] = {
     (for {
@@ -39,36 +38,43 @@ final class ProductService @Inject()(readRepo: ProductRepository2, writeReposito
     program.value
   }
 
-  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse[Unit] = db.withTransaction { implicit conn =>
-    // @todo: Check duplicates
+  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse[Unit] = {
     val error: DomainError = InvalidAttributes
-    val result = attributeIdValuePairs.traverse { pair =>
+    val pairsWithAttribute: EitherT[Future, DomainError, List[(AttributeIdValuePair, Attribute)]] = attributeIdValuePairs.traverse { pair =>
       for {
-        attr <- EitherT.fromOptionF(readRepo.getAttribute(pair.id, "en"), error) // Get the attribute
-        dto <- EitherT.rightT[Future, DomainError](ProductAttributeDTO( // Convert to DTO
+        attr <- EitherT.fromOptionF(readRepo.getAttribute(pair.id, "en"), error)
+      } yield (pair, attr)
+    }
+
+    val program: EitherT[Future, DomainError, Unit] = for {
+      tuples <- pairsWithAttribute
+      _ <- EitherT.right[DomainError](tuples.traverse { tuple =>
+        val (pair, attr) = tuple
+        val dto = ProductAttributeDTO(
           attr.id,
           pair.value,
           None,
           pair.isEditable,
           attr.inputType == "select"
-        ))
-        _ <- EitherT.right[DomainError](insertOrReplaceProductAttribute(productId, dto)) // Persist attributes
-      } yield ()
-    }
+        )
 
-    result.map(_ => ()).value
+        insertOrReplaceProductAttribute(productId, dto)
+      })
+    } yield ()
+
+    program.value
   }
 
-  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Future[Unit] = {
+  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO): Future[Unit] = {
     // Check if the product already has that attribute
     val pao: Future[Option[ProductAttribute]] = readRepo.getProductAttribute(productId, dto.attributeId, "en")
 
     OptionT(pao).map { pa =>
-      writeRepository.updateProductAttribute(pa.id, dto)
+      db.withConnection(implicit conn => writeRepository.updateProductAttribute(pa.id, dto))
       () // @todo: Fix this
     } getOrElse {
       // Add a new attribute
-      writeRepository.createProductAttribute(productId, dto)
+      db.withConnection(implicit conn => writeRepository.createProductAttribute(productId, dto))
       () // @todo: Fix this
     }
   }

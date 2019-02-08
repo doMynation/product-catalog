@@ -2,30 +2,24 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
-
 import cats.data.OptionT
 import cats.implicits._
-import inventory.actions.AuthenticatedAction
-import inventory.repositories.{ProductInclusions, ProductRepository2}
+import inventory.repositories.{ProductInclusions, ProductRepository}
 import inventory.util.SearchRequest
 import play.api.Logger
-import play.api.db.Database
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.SalesService
 import sales.entities.Quote
 import sales.repositories.{CustomerRepository, QuoteRepository}
 import shared._
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreQuoteController @Inject()(
-                                      authAction: AuthenticatedAction,
                                       cc: ControllerComponents,
-                                      db: Database,
                                       quoteRepository: QuoteRepository,
                                       customerRepository: CustomerRepository,
-                                      productRepo: ProductRepository2,
+                                      productRepo: ProductRepository,
                                       salesService: SalesService
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 

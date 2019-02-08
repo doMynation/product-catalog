@@ -3,11 +3,11 @@ package sales
 import javax.inject.Inject
 import cats.data.OptionT
 import cats.implicits._
-import inventory.repositories.ProductRepository2
+import inventory.repositories.ProductRepository
 import shared.LineItem
 import scala.concurrent.{ExecutionContext, Future}
 
-final class SalesService @Inject()(productRepo: ProductRepository2)(implicit ec: ExecutionContext) {
+final class SalesService @Inject()(productRepo: ProductRepository)(implicit ec: ExecutionContext) {
 
   def populateLineItem(item: LineItem, lang: String, includes: Seq[String] = Seq()): Future[LineItem] = {
     val overridenLineItem: OptionT[Future, LineItem] = for {

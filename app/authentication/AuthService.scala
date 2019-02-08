@@ -3,7 +3,6 @@ package authentication
 import java.security.SecureRandom
 import java.time.LocalDateTime
 import javax.inject.Inject
-
 import akka.actor.ActorSystem
 import authentication.dtos.PasswordResetTokenDTO
 import authentication.entities.User
@@ -14,7 +13,6 @@ import inventory.validators.{DomainError, InvalidPasswordResetToken, UserNotFoun
 import tsec.passwordhashers.PasswordHash
 import tsec.passwordhashers.jca.BCrypt
 import util.Mailgun
-
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import cats.data._

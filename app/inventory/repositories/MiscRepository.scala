@@ -2,13 +2,10 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
-
 import infrastructure.DatabaseExecutionContext
-import inventory.dtos.ProductDepartmentDTO
 import inventory.entities.Extrusion
 import inventory.util.DatabaseHelper
 import play.api.db.Database
-
 import scala.concurrent.Future
 
 final class MiscRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {

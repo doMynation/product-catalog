@@ -2,13 +2,11 @@ package accounting.controllers
 
 import java.util.UUID
 import javax.inject._
-
 import accounting.entities.Invoice
 import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
 import cats.implicits._
-import inventory.actions.AuthenticatedAction
-import inventory.repositories.ProductRepository2
+import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.Logger
 import play.api.libs.json.{JsObject, Json}
@@ -16,15 +14,13 @@ import play.api.mvc._
 import sales.SalesService
 import sales.repositories.CustomerRepository
 import shared.{Includable, InvoiceId, LineItems}
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(
-                                        authAction: AuthenticatedAction,
                                         cc: ControllerComponents,
                                         invoiceRepository: InvoiceRepository,
                                         customerRepository: CustomerRepository,
-                                        productRepo: ProductRepository2,
+                                        productRepo: ProductRepository,
                                         salesService: SalesService
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 

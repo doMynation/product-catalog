@@ -2,7 +2,7 @@ package inventory.validators
 
 import inventory.dtos._
 import inventory.forms.EditProductForm
-import inventory.repositories.{MiscRepository, ProductRepository2}
+import inventory.repositories.{MiscRepository, ProductRepository}
 import shared.dtos.TranslationDTO
 import cats._
 import cats.data._
@@ -22,7 +22,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
   def validateSku(value: String): Either[DomainError, String] =
     Either.cond(value.matches("^[\\w-]+$"), value, InvalidSku)
 
-  def validateCategoryId(value: Long, pr: ProductRepository2): Validate[Long] = {
+  def validateCategoryId(value: Long, pr: ProductRepository): Validate[Long] = {
     val error: DomainError = InvalidCategoryId
 
     for {
@@ -31,7 +31,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
     } yield value
   }
 
-  def validateDepartmentId(value: Option[Long], pr: ProductRepository2): Validate[Option[Long]] = {
+  def validateDepartmentId(value: Option[Long], pr: ProductRepository): Validate[Option[Long]] = {
     val error: DomainError = InvalidDepartmentId
 
     for {
@@ -62,7 +62,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
       InvalidTags
     )
 
-  def validateAttributes(value: List[AttributeIdValuePair], pr: ProductRepository2): Validate[List[ProductAttributeDTO]] = {
+  def validateAttributes(value: List[AttributeIdValuePair], pr: ProductRepository): Validate[List[ProductAttributeDTO]] = {
     // @todo: Validate value based on attribute's data and input type
     // @todo: Validate existence of value (if reference)
     val error: DomainError = InvalidAttributes
@@ -79,7 +79,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
     }
   }
 
-  def validateChildren(value: List[ProductChildDTO], pr: ProductRepository2): Validate[List[ProductChildDTO]] = {
+  def validateChildren(value: List[ProductChildDTO], pr: ProductRepository): Validate[List[ProductChildDTO]] = {
     val error: Long => DomainError = ProductNotFound(_)
 
     value.traverse(child =>
@@ -90,7 +90,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
     )
   }
 
-  def validateSalesRules(value: List[ProductRuleDTO], pr: ProductRepository2): Validate[List[ProductRuleDTO]] = {
+  def validateSalesRules(value: List[ProductRuleDTO], pr: ProductRepository): Validate[List[ProductRuleDTO]] = {
     val error: Long => DomainError = ProductNotFound(_)
 
     value.traverse { rule =>
@@ -131,7 +131,7 @@ final class EditProductValidator()(implicit ec: ExecutionContext) {
     result
   }
 
-  def validate(form: EditProductForm, pr: ProductRepository2, mr: MiscRepository): Future[Either[DomainError, ProductDTO]] =
+  def validate(form: EditProductForm, pr: ProductRepository, mr: MiscRepository): Future[Either[DomainError, ProductDTO]] =
     (for {
       _ <- EitherT.fromEither[Future](validateHash(form.hash))
       _ <- EitherT.fromEither[Future](validateSku(form.sku))
