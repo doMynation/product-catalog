@@ -7,10 +7,12 @@ import javax.inject.Inject
 
 import accounting.entities._
 import infrastructure.DatabaseExecutionContext
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Quote, QuoteStatus}
 import shared._
+import shared.entities._
+import utils.QuoteId
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
@@ -30,7 +32,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "quoteId" -> id.toString
       )
 
-      DatabaseHelper.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
+      DB.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
     }
   }
 
@@ -47,7 +49,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "quoteId" -> quoteId.toString
       )
 
-      DatabaseHelper.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
+      DB.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
     }
   }
 
@@ -65,7 +67,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "quoteId" -> quoteId.toString
       )
 
-      DatabaseHelper.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
+      DB.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
     }
   }
 
@@ -83,7 +85,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "quoteId" -> quoteId.toString
       )
 
-      DatabaseHelper.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
+      DB.fetchOne[Quote](sql, params)(hydrateQuote)(conn)
     }
   }
 
@@ -91,7 +93,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     db.withConnection { conn =>
       val sql = "SELECT * FROM s_quote_documents WHERE quote_id = @quoteId"
 
-      DatabaseHelper.fetchMany(sql, Map("quoteId" -> quoteId.toString))(hydrateFile)(conn)
+      DB.fetchMany(sql, Map("quoteId" -> quoteId.toString))(hydrateFile)(conn)
     }
   }
 
@@ -112,7 +114,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
           WHERE qt.quote_id = @quoteId;
         """
 
-      val taxes = DatabaseHelper.fetchMany(sql, Map("quoteId" -> quoteId.toString)) { rs =>
+      val taxes = DB.fetchMany(sql, Map("quoteId" -> quoteId.toString)) { rs =>
         (hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
 
@@ -124,7 +126,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     db.withConnection { conn =>
       val sql = "SELECT * FROM s_quote_products WHERE quote_id = @quoteId"
 
-      val lineItems = DatabaseHelper.fetchMany(sql, Map("quoteId" -> quoteId.toString))(hydrateLineItem)(conn)
+      val lineItems = DB.fetchMany(sql, Map("quoteId" -> quoteId.toString))(hydrateLineItem)(conn)
       val lineItemAttributeOverrides = getLineItemsAttributeOverrides(quoteId)
 
       lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
@@ -140,7 +142,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
           WHERE qp.quote_id = @quoteId
         """
 
-    val attributesData: Seq[(Long, String, String)] = DatabaseHelper.fetchMany(sql, Map("quoteId" -> quoteId.toString)) { rs =>
+    val attributesData: Seq[(Long, String, String)] = DB.fetchMany(sql, Map("quoteId" -> quoteId.toString)) { rs =>
       (rs.getLong("product_record_id"), rs.getString("attribute_code"), rs.getString("attribute_value"))
     }(conn)
 
@@ -206,7 +208,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
               HAVING ${havings.mkString(" AND ")}
         """
 
-      val totalCount = DatabaseHelper.fetchColumn[Int](countSql, params)(conn)
+      val totalCount = DB.fetchColumn[Int](countSql, params)(conn)
       val fetchSql =
         s"""
               SELECT
@@ -220,7 +222,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
               ORDER BY $sortField ${sr.sortOrder}
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
-      val quotes = DatabaseHelper.fetchMany(fetchSql, params)(hydrateQuote)(conn)
+      val quotes = DB.fetchMany(fetchSql, params)(hydrateQuote)(conn)
 
       SearchResult(quotes, totalCount.get)
     }
@@ -245,7 +247,7 @@ final class QuoteRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       total = BigDecimal(rs.getBigDecimal("total")),
       currency = currency,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      updatedAt = DB.getNullable[LocalDateTime]("modification_date", rs),
       status = quoteStatus,
       metadata = metadata
     )

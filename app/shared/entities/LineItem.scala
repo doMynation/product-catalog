@@ -1,4 +1,4 @@
-package shared
+package shared.entities
 
 import play.api.libs.json.{Json, Writes}
 

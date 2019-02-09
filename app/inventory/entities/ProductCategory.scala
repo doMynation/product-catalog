@@ -1,8 +1,10 @@
 package inventory.entities
 
 import java.time.LocalDateTime
+
 import play.api.libs.json.{Json, Writes}
-import shared.TimestampEntity
+import shared.entities.TimestampEntity
+
 import scala.collection.immutable.SortedSet
 
 object ProductCategory {

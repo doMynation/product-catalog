@@ -1,8 +1,7 @@
 package inventory.controllers
 
 import javax.inject.Inject
-import authentication.actions.AuthenticatedAction
-import infrastructure.{ApiError, ApiResponse}
+
 import inventory.ProductService
 import inventory.dtos.{AttributeIdValuePair, ProductDepartmentDTO}
 import inventory.entities.Admin.ProductEditData
@@ -12,11 +11,14 @@ import inventory.repositories.{ProductInclusions, ProductRepository, ProductWrit
 import inventory.util.FileUploader
 import inventory.validators.{DepartmentNotFound, DomainError, GenericError, InvalidPayload}
 import play.api.Logger
-import play.api.libs.json.{Json}
+import play.api.libs.json.Json
 import play.api.mvc.{AbstractController, ControllerComponents}
+
 import scala.concurrent.{ExecutionContext, Future}
 import cats.data.{EitherT, OptionT}
 import cats.implicits._
+import infrastructure.actions.SessionAction
+import infrastructure.responses.{ApiError, ApiResponse}
 import shared.Types.ServiceResponse
 
 /**
@@ -28,7 +30,7 @@ class AdminProductController @Inject()(
                                         productWriteRepo: ProductWriteRepository,
                                         productService: ProductService,
                                         uploader: FileUploader,
-                                        authAction: AuthenticatedAction
+                                        authAction: SessionAction
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def createDepartment = authAction.async(parse.json) { req =>

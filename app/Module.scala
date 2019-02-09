@@ -3,7 +3,7 @@ import java.time.Clock
 import inventory.util.FileUploader
 import play.api.libs.ws.WSClient
 import play.api.{Configuration, Environment}
-import util.Mailgun
+import utils.Mailgun
 
 class Module(env: Environment, config: Configuration) extends AbstractModule {
 

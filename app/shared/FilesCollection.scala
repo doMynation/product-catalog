@@ -1,6 +1,7 @@
 package shared
 
 import play.api.libs.json.{JsArray, JsValue, Json, Writes}
+import shared.entities.File
 
 object FilesCollection {
   implicit val filesWrites: Writes[FilesCollection] = new Writes[FilesCollection] {

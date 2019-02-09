@@ -1,4 +1,4 @@
-package shared.imports
+package utils.imports
 
 package object implicits {
 

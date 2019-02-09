@@ -1,6 +1,7 @@
-package shared
+package shared.entities
 
 import play.api.libs.json._
+import shared.Includable
 
 object ApplicableTaxes {
   implicit val invoiceTaxesWrites: Writes[ApplicableTaxes] = new Writes[ApplicableTaxes] {

@@ -12,7 +12,7 @@ import cats.effect.IO
 import inventory.validators.{DomainError, InvalidPasswordResetToken, UserNotFound}
 import tsec.passwordhashers.PasswordHash
 import tsec.passwordhashers.jca.BCrypt
-import util.Mailgun
+import utils.Mailgun
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import cats.data._

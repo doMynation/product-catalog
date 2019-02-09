@@ -1,6 +1,7 @@
-package shared
+package shared.entities
 
 import java.time.LocalDateTime
+
 import play.api.libs.json.{Json, Writes}
 
 object File {

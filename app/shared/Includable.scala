@@ -2,6 +2,7 @@ package shared
 
 import play.api.libs.json.{Json, Writes}
 import sales.entities.{Customer, ExpeditionDetails}
+import shared.entities.ApplicableTaxes
 
 trait Includable {}
 

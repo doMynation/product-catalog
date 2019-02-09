@@ -1,7 +1,7 @@
 package inventory.entities
 
 import inventory.dtos.ProductStorePriceDTO
-import shared.DTOMappable
+import utils.DTOMappable
 
 object ProductStorePrice extends DTOMappable[ProductStorePrice, ProductStorePriceDTO] {
   override implicit def toDto(entity: ProductStorePrice): ProductStorePriceDTO = ProductStorePriceDTO(

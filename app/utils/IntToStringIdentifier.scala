@@ -1,4 +1,4 @@
-package shared
+package utils
 
 trait IntToStringIdentifier {
   protected val idsMap: Map[Int, String]

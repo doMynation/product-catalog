@@ -3,7 +3,7 @@ package inventory.entities
 import java.time.LocalDateTime
 
 import play.api.libs.json.{Json, Writes}
-import shared.TimestampEntity
+import shared.entities.TimestampEntity
 
 object Attribute {
   implicit val attributeWrites: Writes[Attribute] = Json.writes[Attribute]

@@ -2,6 +2,7 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import cats.data.OptionT
 import cats.implicits._
 import inventory.repositories.{ProductInclusions, ProductRepository}
@@ -14,6 +15,8 @@ import sales.entities.Order
 import sales.repositories.{CustomerRepository, OrderRepository}
 import shared.repositories.CommentRepository
 import shared._
+import utils.OrderId
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreOrderController @Inject()(

@@ -2,8 +2,9 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
+
 import inventory.entities._
-import inventory.util.DatabaseHelper
+import inventory.util.DB
 import shared.entities.Lang
 
 object Hydrators {
@@ -26,20 +27,20 @@ object Hydrators {
 
   def hydrateProduct(rs: ResultSet): Product = {
     val metadata = Map(
-      "mpn" -> DatabaseHelper.getNullable[String]("mpn", rs).getOrElse(""),
-      "imageUrl" -> DatabaseHelper.getNullable[String]("image_url", rs).getOrElse(""),
+      "mpn" -> DB.getNullable[String]("mpn", rs).getOrElse(""),
+      "imageUrl" -> DB.getNullable[String]("image_url", rs).getOrElse(""),
       "isKit" -> rs.getInt("is_kit").toString,
       "stickerId" -> rs.getString("sticker_template_id"),
       "extrusionId" -> rs.getString("extrusion_template_id"),
     )
 
-    val tags = DatabaseHelper.getNullable[String]("tags", rs) match {
+    val tags = DB.getNullable[String]("tags", rs) match {
       case Some("") => List[String]()
       case Some(s) => s.split(",").toList
       case _ => List[String]()
     }
 
-    val department = DatabaseHelper.getNullable[String]("d.code", rs).map { _ =>
+    val department = DB.getNullable[String]("d.code", rs).map { _ =>
       hydrateProductDepartment(rs)
     }
 
@@ -56,7 +57,7 @@ object Hydrators {
       category = Some(hydrateProductCategory(rs)),
       department = department,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      updatedAt = DB.getNullable[LocalDateTime]("modification_date", rs),
       metadata = metadata,
       isCustom = rs.getBoolean("is_custom"),
       isEnabled = rs.getBoolean("status"),
@@ -77,11 +78,11 @@ object Hydrators {
           rs.getString("attribute_long_description")
         ),
         rs.getTimestamp("attribute_creation_date").toLocalDateTime,
-        DatabaseHelper.getNullable[LocalDateTime]("attribute_modification_date", rs)
+        DB.getNullable[LocalDateTime]("attribute_modification_date", rs)
       ),
       value = rs.getString("value"),
-      valueId = DatabaseHelper.getNullable[Long]("value_id", rs),
-      valueSku = DatabaseHelper.getNullable[String]("value_sku", rs),
+      valueId = DB.getNullable[Long]("value_id", rs),
+      valueSku = DB.getNullable[String]("value_sku", rs),
       isEditable = rs.getBoolean("is_editable"),
       isReference = rs.getBoolean("is_reference")
     )
@@ -97,7 +98,7 @@ object Hydrators {
         rs.getString("c.long_description")
       ),
       createdAt = rs.getTimestamp("c.creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("c.modification_date", rs)
+      updatedAt = DB.getNullable[LocalDateTime]("c.modification_date", rs)
     )
   }
 
@@ -111,7 +112,7 @@ object Hydrators {
         rs.getString("d.long_description")
       ),
       createdAt = rs.getTimestamp("d.creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("d.modification_date", rs)
+      updatedAt = DB.getNullable[LocalDateTime]("d.modification_date", rs)
     )
   }
 
@@ -147,6 +148,6 @@ object Hydrators {
       rs.getString("input_type"),
       hydrateDescription(rs),
       rs.getTimestamp("creation_date").toLocalDateTime,
-      DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs)
+      DB.getNullable[LocalDateTime]("modification_date", rs)
     )
 }

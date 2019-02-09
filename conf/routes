@@ -20,12 +20,12 @@ GET           /productDepartments/all                                           
 GET           /attributes/all                                                                                                     inventory.controllers.ProductController.getAttributes(lang: Option[String])
 
 # Products (by store)
-GET           /store/products                                                                                                     inventory.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
-GET           /store/products/$id<[0-9]+>                                                                                         inventory.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
-GET           /store/products/$ids<[0-9]+,+[0-9,]*>                                                                               inventory.controllers.StoreProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
-GET           /store/products/$sku<[a-zA-Z0-9-]+>                                                                                 inventory.controllers.StoreProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
-GET           /store/products/:productId/rules                                                                                    inventory.controllers.StoreProductController.getRules(productId: Long, lang: Option[String])
-GET           /store/rules/:ruleId                                                                                                inventory.controllers.StoreProductController.getRule(ruleId: Long, lang: Option[String])
+GET           /store/products                                                                                                     api.controllers.StoreProductController.search(lang: Option[String], include: Option[String])
+GET           /store/products/$id<[0-9]+>                                                                                         api.controllers.StoreProductController.get(id: Long, lang: Option[String], include: Option[String])
+GET           /store/products/$ids<[0-9]+,+[0-9,]*>                                                                               api.controllers.StoreProductController.getMultiple(ids: String, lang: Option[String], include: Option[String])
+GET           /store/products/$sku<[a-zA-Z0-9-]+>                                                                                 api.controllers.StoreProductController.getBySku(sku: String, lang: Option[String], include: Option[String])
+GET           /store/products/:productId/rules                                                                                    api.controllers.StoreProductController.getRules(productId: Long, lang: Option[String])
+GET           /store/rules/:ruleId                                                                                                api.controllers.StoreProductController.getRule(ruleId: Long, lang: Option[String])
 
 # Attributes
 GET           /attributes/:attributeId/values                                                                                     inventory.controllers.ProductController.getAttributeValues(attributeId: Long, lang: Option[String])

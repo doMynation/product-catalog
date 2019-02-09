@@ -1,12 +1,14 @@
-package authentication.actions
+package infrastructure.actions
 
 import javax.inject.Inject
+
 import accounting.repositories.StoreRepository
-import authentication.ApiRequest
 import cats.data.OptionT
 import cats.implicits._
+import infrastructure.requests.ApiRequest
 import play.api.mvc.Results._
 import play.api.mvc._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class ApiAction @Inject()(val parser: BodyParsers.Default, storeRepo: StoreRepository)

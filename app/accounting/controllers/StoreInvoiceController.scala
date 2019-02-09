@@ -2,6 +2,7 @@ package accounting.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import accounting.entities.Invoice
 import accounting.repositories.InvoiceRepository
 import cats.data.OptionT
@@ -13,7 +14,9 @@ import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.SalesService
 import sales.repositories.CustomerRepository
-import shared.{Includable, InvoiceId, LineItems}
+import shared.{Includable, LineItems}
+import utils.InvoiceId
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(

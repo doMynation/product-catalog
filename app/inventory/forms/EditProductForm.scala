@@ -1,7 +1,6 @@
 package inventory.forms
 
 import java.time.LocalDateTime
-
 import inventory.dtos._
 import inventory.repositories.{MiscRepository, ProductRepository}
 import inventory.validators.{DomainError, EditProductValidator}
@@ -9,8 +8,7 @@ import shared.dtos.TranslationDTO
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
-import shared.DTOMappable
-
+import utils.DTOMappable
 import scala.concurrent.{ExecutionContext, Future}
 
 object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {

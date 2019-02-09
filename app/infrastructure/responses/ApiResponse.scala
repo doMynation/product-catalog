@@ -1,4 +1,4 @@
-package infrastructure
+package infrastructure.responses
 
 import play.api.libs.json.{JsValue, Json, Writes}
 

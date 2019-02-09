@@ -4,7 +4,7 @@ import java.sql.ResultSet
 import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.entities.Extrusion
-import inventory.util.DatabaseHelper
+import inventory.util.DB
 import play.api.db.Database
 import scala.concurrent.Future
 
@@ -24,7 +24,7 @@ final class MiscRepository @Inject()(db: Database)(implicit ec: DatabaseExecutio
          FROM extrusion_templates et JOIN extrusions e ON e.id = et.extrusion_id
          WHERE et.id = @extrusionId
       """
-    val fetch = DatabaseHelper.fetchOne(sql, Map("extrusionId" -> id.toString))(hydrateExtrusion) _
+    val fetch = DB.fetchOne(sql, Map("extrusionId" -> id.toString))(hydrateExtrusion) _
 
     db.withConnection(fetch)
   }
@@ -42,7 +42,7 @@ final class MiscRepository @Inject()(db: Database)(implicit ec: DatabaseExecutio
          e.weight
          FROM extrusion_templates et JOIN extrusions e ON e.id = et.extrusion_id
       """
-    val fetch = DatabaseHelper.fetchMany[Extrusion](sql, Map())(hydrateExtrusion) _
+    val fetch = DB.fetchMany[Extrusion](sql, Map())(hydrateExtrusion) _
 
     db.withConnection(fetch)
   }

@@ -4,11 +4,15 @@ import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
+
 import accounting.entities._
 import infrastructure.DatabaseExecutionContext
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import shared._
+import shared.entities.{ApplicableTaxes, LineItem, LineItemType, TaxComponent}
+import utils.InvoiceId
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -28,7 +32,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         "invoiceId" -> id.toString
       )
 
-      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
+      DB.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
     }
   }
 
@@ -47,7 +51,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         "invoiceId" -> invoiceId.toString
       )
 
-      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
+      DB.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
     }
   }
 
@@ -66,7 +70,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
         "invoiceId" -> invoiceId.toString
       )
 
-      DatabaseHelper.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
+      DB.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
     }
   }
 
@@ -76,8 +80,8 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       val sql = "SELECT SUM(balance) AS totalBalance FROM s_invoices WHERE branch_id = @storeId AND status = @invoiceStatus"
       val params = Map("storeId" -> storeId.toString, "invoiceStatus" -> unpaidStatusId.toString)
 
-      DatabaseHelper.fetchOne[Option[BigDecimal]](sql, params) { rs =>
-        DatabaseHelper.getNullable[BigDecimal]("totalBalance", rs)
+      DB.fetchOne[Option[BigDecimal]](sql, params) { rs =>
+        DB.getNullable[BigDecimal]("totalBalance", rs)
       }(conn).flatten
     }
   }
@@ -99,7 +103,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
           WHERE it.invoice_id = @invoiceId;
         """
 
-      val taxes = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
+      val taxes = DB.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
         (hydrateTaxComponent(rs), BigDecimal(rs.getBigDecimal("componentAmount")))
       }(conn)
 
@@ -111,7 +115,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     db.withConnection { conn =>
       val sql = "SELECT * FROM s_invoice_products WHERE invoice_id = @invoiceId"
 
-      val lineItems = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
+      val lineItems = DB.fetchMany(sql, Map("invoiceId" -> invoiceId.toString))(hydrateLineItem)(conn)
       val lineItemAttributeOverrides = getLineItemsAttributeOverrides(invoiceId)
 
       lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
@@ -127,7 +131,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
           WHERE ip.invoice_id = @invoiceId
         """
 
-    val attributesData: Seq[(Long, String, String)] = DatabaseHelper.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
+    val attributesData: Seq[(Long, String, String)] = DB.fetchMany(sql, Map("invoiceId" -> invoiceId.toString)) { rs =>
       (rs.getLong("product_record_id"), rs.getString("attribute_code"), rs.getString("attribute_value"))
     }(conn)
 
@@ -204,7 +208,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
               HAVING ${havings.mkString(" AND ")}
         """
 
-      val totalCount = DatabaseHelper.fetchColumn[Int](countSql, params)(conn)
+      val totalCount = DB.fetchColumn[Int](countSql, params)(conn)
       val fetchSql =
         s"""
               SELECT
@@ -220,7 +224,7 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
               ORDER BY $sortField ${sr.sortOrder}
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
-      val invoices = DatabaseHelper.fetchMany(fetchSql, params)(hydrateInvoice)(conn)
+      val invoices = DB.fetchMany(fetchSql, params)(hydrateInvoice)(conn)
 
       SearchResult(invoices, totalCount.get)
     }
@@ -233,23 +237,23 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     val metadata = Map(
       "note" -> rs.getString("i.note"),
       "customerName" -> rs.getString("c.full_name"),
-      "orderName" -> DatabaseHelper.getNullable[String]("orderName", rs).getOrElse("")
+      "orderName" -> DB.getNullable[String]("orderName", rs).getOrElse("")
     )
 
     Invoice(
       id = rs.getLong("id"),
       uuid = UUID.fromString(rs.getString("url_id")),
-      orderId = DatabaseHelper.getNullable[Long]("order_id", rs),
+      orderId = DB.getNullable[Long]("order_id", rs),
       authorId = rs.getLong("user_id"),
       storeId = rs.getLong("branch_id"),
       customerId = rs.getLong("customer_id"),
       name = rs.getString("sale_id"),
       subtotal = BigDecimal(rs.getBigDecimal("sub_total")),
       total = BigDecimal(rs.getBigDecimal("total")),
-      paidAmount = DatabaseHelper.getNullable[BigDecimal]("deposit", rs).getOrElse(BigDecimal(0)),
+      paidAmount = DB.getNullable[BigDecimal]("deposit", rs).getOrElse(BigDecimal(0)),
       currency = currency,
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      updatedAt = DB.getNullable[LocalDateTime]("modification_date", rs),
       invoiceType = invoiceType,
       status = invoiceStatus,
       metadata = metadata

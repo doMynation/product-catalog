@@ -5,14 +5,16 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
+
 import inventory.dtos._
-import inventory.util.DatabaseHelper
+import inventory.util.DB
 import play.api.db.Database
 import shared.Types.Product
 import shared.dtos.TranslationDTO
 import shared.entities.Lang
+
 import scala.util.Try
-import shared.imports.implicits._
+import utils.imports.implicits._
 
 final class ProductWriteRepository @Inject()(db: Database) {
   def updateProduct(product: Product, dto: ProductDTO): Unit = {
@@ -58,7 +60,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Boolean = {
     val task = (connection: Connection) => {
-      val affected = DatabaseHelper.update("inv_products",
+      val affected = DB.update("inv_products",
         List("id = @productId"),
         Map("productId" -> productId.toString),
         fields ++ Map(
@@ -82,20 +84,20 @@ final class ProductWriteRepository @Inject()(db: Database) {
       productIds.map(id => s"p_$id" -> id.toString).toMap +
       ("modification_date" -> now)
 
-    val query = DatabaseHelper.executeUpdate(sql, params) _
+    val query = DB.executeUpdate(sql, params) _
     val affected = db.withConnection(query)
 
     affected > 0
   }
 
   def deleteProduct(productId: Long): Boolean = db.withConnection { conn =>
-    val affectedRows = DatabaseHelper.executeUpdate("DELETE FROM inv_products WHERE id = @productId", Map("productId" -> productId.toString))(conn)
+    val affectedRows = DB.executeUpdate("DELETE FROM inv_products WHERE id = @productId", Map("productId" -> productId.toString))(conn)
 
     affectedRows > 0
   }
 
   def deleteTranslations(descriptionId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DatabaseHelper.executeUpdate(
+    val affectedRows = DB.executeUpdate(
       "DELETE FROM translations WHERE description_id = @descriptionId",
       Map("descriptionId" -> descriptionId.toString)
     )(connection)
@@ -104,7 +106,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
   }
 
   def deleteProductAttributes(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DatabaseHelper.executeUpdate(
+    val affectedRows = DB.executeUpdate(
       "DELETE FROM inv_product_attributes WHERE product_id = @productId",
       Map("productId" -> productId.toString)
     )(connection)
@@ -113,7 +115,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
   }
 
   def deleteProductChildren(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DatabaseHelper.executeUpdate(
+    val affectedRows = DB.executeUpdate(
       "DELETE FROM inv_product_compositions WHERE product_id = @productId",
       Map("productId" -> productId.toString)
     )(connection)
@@ -122,7 +124,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
   }
 
   def deleteProductRules(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DatabaseHelper.executeUpdate(
+    val affectedRows = DB.executeUpdate(
       "DELETE FROM inv_product_relations WHERE product_id = @productId",
       Map("productId" -> productId.toString)
     )(connection)
@@ -155,7 +157,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
         dto.metadata.get("extrusionId").filterNot(v => v == null || v == "0").map(v => Map("extrusion_template_id" -> v)).getOrElse(Map())
 
       // Insert product
-      val productId = DatabaseHelper.insert("inv_products", productData)(conn)
+      val productId = DB.insert("inv_products", productData)(conn)
 
       // @todo: DB Batch inserts
       // Persist stores
@@ -179,7 +181,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def createTranslation(descriptionId: Long, translation: TranslationDTO)(implicit conn: Connection): Try[Long] = {
     Try {
-      DatabaseHelper.insert("translations", Map(
+      DB.insert("translations", Map(
         "description_id" -> descriptionId.toString,
         "lang_id" -> Lang.fromString(translation.lang, 1).toString,
         "label" -> translation.name,
@@ -193,7 +195,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
   def createDescription(translations: Seq[TranslationDTO])(implicit conn: Connection): Try[Long] = {
     // Create the description entry
     val descriptionIdTry = Try {
-      DatabaseHelper.insert("descriptions", Map(
+      DB.insert("descriptions", Map(
         "creation_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
         "modification_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
       ))(conn)
@@ -211,7 +213,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
     val isOriginalPrice = rule.newPrice == 0.00
 
     Try {
-      DatabaseHelper.insert("inv_product_relations", Map(
+      DB.insert("inv_product_relations", Map(
         "product_id" -> productId.toString,
         "related_product_id" -> rule.productId.toString,
         "price" -> rule.newPrice.toString,
@@ -225,7 +227,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def createProductChild(productId: Long, child: ProductChildDTO)(implicit conn: Connection): Try[Long] = {
     Try {
-      DatabaseHelper.insert("inv_product_compositions", Map(
+      DB.insert("inv_product_compositions", Map(
         "product_id" -> productId.toString,
         "sub_product_id" -> child.productId.toString,
         "type" -> child.childType,
@@ -238,7 +240,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def createProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Try[Long] = {
     Try {
-      DatabaseHelper.insert("inv_product_attributes", Map(
+      DB.insert("inv_product_attributes", Map(
         "product_id" -> productId.toString,
         "attribute_id" -> dto.attributeId.toString,
         "attribute_value" -> dto.valueId.getOrElse(dto.value).toString,
@@ -249,7 +251,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
   }
 
   def updateProductAttribute(recordId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Boolean = {
-    val affected = DatabaseHelper.update(
+    val affected = DB.update(
       "inv_product_attributes",
       List("id = @id"),
       Map("id" -> recordId.toString),
@@ -264,7 +266,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def createProductAssemblyPart(productId: Long, part: ProductAssemblyPartDTO)(implicit conn: Connection): Try[Long] = {
     Try {
-      DatabaseHelper.insert("inv_product_assemblies", Map(
+      DB.insert("inv_product_assemblies", Map(
         "product_id" -> productId.toString,
         "assembly_product_id" -> part.productId.toString,
         "tag" -> part.partType,
@@ -275,7 +277,7 @@ final class ProductWriteRepository @Inject()(db: Database) {
 
   def createProductStorePrice(productId: Long, storePrice: ProductStorePriceDTO)(implicit conn: Connection): Try[Long] = {
     Try {
-      DatabaseHelper.insert("inv_product_stores", Map(
+      DB.insert("inv_product_stores", Map(
         "product_id" -> productId.toString,
         "store_id" -> storePrice.storeId.toString,
       ) ++ storePrice.price.map(s => Map("price" -> s.toString)).getOrElse(Map())
@@ -286,9 +288,9 @@ final class ProductWriteRepository @Inject()(db: Database) {
   def createDepartment(dto: ProductDepartmentDTO): Long = {
     val task = (conn: Connection) => {
       val dit = createDescription(dto.translations)(conn)
-      val nextDisplayOrder = DatabaseHelper.fetchColumn[Int]("SELECT MAX(display_order) FROM inv_departments")(conn)
+      val nextDisplayOrder = DB.fetchColumn[Int]("SELECT MAX(display_order) FROM inv_departments")(conn)
 
-      DatabaseHelper.insert("inv_departments", Map(
+      DB.insert("inv_departments", Map(
         "description_id" -> dit.get.toString, // @todo unsafe, fix this
         "code" -> dto.code,
         "display_order" -> nextDisplayOrder.get.toString, // @todo unsafe, fix this

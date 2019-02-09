@@ -1,23 +1,25 @@
 package authentication.controllers
 
 import javax.inject.Inject
+
 import authentication.AuthService
-import authentication.actions.AuthenticatedAction
 import authentication.forms.{ChangePasswordForm, LoginForm}
 import authentication.repositories.UserRepository
 import cats.data.OptionT
 import cats.effect.IO
 import cats.implicits._
-import infrastructure.{ApiError, ApiResponse}
+import infrastructure.actions.SessionAction
+import infrastructure.responses.{ApiError, ApiResponse}
 import inventory.validators.{DomainError, InvalidPasswordResetToken}
 import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc._
 import tsec.passwordhashers.jca.BCrypt
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class AuthController @Inject()(cc: ControllerComponents,
                                userRepo: UserRepository,
-                               authAction: AuthenticatedAction,
+                               authAction: SessionAction,
                                authService: AuthService,
                               )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 

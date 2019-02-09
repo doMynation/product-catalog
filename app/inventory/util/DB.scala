@@ -1,11 +1,25 @@
 package inventory.util
 
 import java.sql._
-
 import scala.collection.immutable.Queue
-import scala.util.{Failure, Success, Try}
 
-object DatabaseHelper {
+object DB {
+
+  /**
+    * Fetches the first record from the result of a database query.
+    *
+    * @param sql        An SQL statement
+    * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
+    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `T`
+    * @return A single record of type `T`
+    */
+  def fetchOneImpl[T](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => T): Connection => Option[T] = {
+    (connection: Connection) => {
+      val rs = executeQuery(sql, params)(connection)
+
+      if (rs.next) Some(hydrator(rs)) else None
+    }
+  }
 
   /**
     * Fetches the first record from the result of a database query.

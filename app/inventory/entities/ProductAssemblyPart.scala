@@ -2,7 +2,7 @@ package inventory.entities
 
 import inventory.dtos.ProductAssemblyPartDTO
 import play.api.libs.json.{Json, Writes}
-import shared.DTOMappable
+import utils.DTOMappable
 
 object ProductAssemblyPart extends DTOMappable[ProductAssemblyPart, ProductAssemblyPartDTO] {
   implicit val productChildWrites: Writes[ProductAssemblyPart] = Json.writes[ProductAssemblyPart]

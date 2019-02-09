@@ -1,4 +1,6 @@
-package shared
+package shared.entities
+
+import utils.IntToStringIdentifier
 
 object LineItemType extends IntToStringIdentifier {
   val NORMAL = "normal"

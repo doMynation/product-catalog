@@ -1,4 +1,4 @@
-package util
+package utils
 
 import play.api.libs.ws.{WSAuthScheme, WSClient}
 

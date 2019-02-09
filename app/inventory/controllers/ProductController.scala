@@ -1,16 +1,18 @@
 package inventory.controllers
 
 import javax.inject._
-import authentication.actions.ApiAction
-import infrastructure.ApiResponse
+
 import inventory.entities.AttributeValue
 import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
+
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.Logger
 import cats.implicits._
+import infrastructure.actions.ApiAction
+import infrastructure.responses.ApiResponse
 
 class ProductController @Inject()(
                                    apiAction: ApiAction,

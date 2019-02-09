@@ -1,10 +1,10 @@
-package inventory.controllers
+package api.controllers
 
 import javax.inject._
-import authentication.actions.ApiAction
 import cats.data.OptionT
 import cats.implicits._
-import infrastructure.ApiResponse
+import infrastructure.actions.ApiAction
+import infrastructure.responses.ApiResponse
 import inventory.repositories.{ProductRepository, StoreProductRepository}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json

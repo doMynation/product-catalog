@@ -1,6 +1,7 @@
 package shared
 
 import play.api.libs.json.{JsArray, JsValue, Json, Writes}
+import shared.entities.Comment
 
 object Comments {
   implicit val commentsWrites: Writes[Comments] = new Writes[Comments] {

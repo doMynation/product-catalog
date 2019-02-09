@@ -4,9 +4,9 @@ import java.sql.ResultSet
 import javax.inject.Inject
 import infrastructure.DatabaseExecutionContext
 import inventory.entities.Store
-import inventory.util.{DatabaseHelper}
+import inventory.util.DB
 import play.api.db.Database
-import shared.{StoreId}
+import utils.StoreId
 import scala.concurrent.Future
 
 final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -16,7 +16,7 @@ final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecuti
       val sql = "SELECT inv_stores.* FROM inv_stores WHERE id = @storeId"
       val params = Map("apiKey" -> id.value.toString)
 
-      DatabaseHelper.fetchOne(sql, params)(hydrateStore)(conn)
+      DB.fetchOne(sql, params)(hydrateStore)(conn)
     }
   }
 
@@ -25,7 +25,7 @@ final class StoreRepository @Inject()(db: Database)(implicit ec: DatabaseExecuti
       val sql = "SELECT inv_stores.* FROM inv_stores WHERE api_key = @apiKey"
       val params = Map("apiKey" -> apiKey)
 
-      DatabaseHelper.fetchOne(sql, params)(hydrateStore)(conn)
+      DB.fetchOne(sql, params)(hydrateStore)(conn)
     }
   }
 

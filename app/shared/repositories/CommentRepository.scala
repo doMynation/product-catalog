@@ -2,10 +2,12 @@ package shared.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
+
 import infrastructure.DatabaseExecutionContext
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
-import shared.Comment
+import shared.entities.Comment
+
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 
@@ -87,8 +89,8 @@ final class CommentRepository @Inject()(@NamedDatabase("solarius") db: Database)
           ORDER BY $sortField ${sr.sortOrder}
           ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
-      val comments = DatabaseHelper.fetchMany(sql, params)(hydrateComment)(conn)
-      val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
+      val comments = DB.fetchMany(sql, params)(hydrateComment)(conn)
+      val totalCount = DB.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
 
       SearchResult(comments, totalCount.get)
     }

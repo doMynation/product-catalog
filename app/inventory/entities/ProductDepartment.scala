@@ -1,8 +1,9 @@
 package inventory.entities
 
 import java.time.LocalDateTime
+
 import play.api.libs.json.{Json, Writes}
-import shared.TimestampEntity
+import shared.entities.TimestampEntity
 
 object ProductDepartment {
   implicit val departmentWrites: Writes[ProductDepartment] = Json.writes[ProductDepartment]

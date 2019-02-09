@@ -2,7 +2,7 @@ package inventory.entities
 
 import inventory.dtos.ProductChildDTO
 import play.api.libs.json._
-import shared.DTOMappable
+import utils.DTOMappable
 
 object ProductChild extends DTOMappable[ProductChild, ProductChildDTO] {
   val TYPE_COMPOSED = "composed" // A parent is "composed" of this child

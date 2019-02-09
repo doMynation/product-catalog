@@ -2,7 +2,7 @@ package inventory.entities
 
 import inventory.dtos.ProductRuleDTO
 import play.api.libs.json.{Json, Writes}
-import shared.DTOMappable
+import utils.DTOMappable
 
 object ProductRule extends DTOMappable[ProductRule, ProductRuleDTO] {
   implicit val ruleWrites: Writes[ProductRule] = Json.writes[ProductRule]

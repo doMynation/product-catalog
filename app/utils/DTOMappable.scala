@@ -1,4 +1,4 @@
-package shared
+package utils
 
 trait DTOMappable[A, B] {
   self =>

@@ -1,10 +1,12 @@
 package sales
 
 import javax.inject.Inject
+
 import cats.data.OptionT
 import cats.implicits._
 import inventory.repositories.ProductRepository
-import shared.LineItem
+import shared.entities.LineItem
+
 import scala.concurrent.{ExecutionContext, Future}
 
 final class SalesService @Inject()(productRepo: ProductRepository)(implicit ec: ExecutionContext) {

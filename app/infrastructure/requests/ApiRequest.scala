@@ -1,4 +1,4 @@
-package authentication
+package infrastructure.requests
 
 import inventory.entities.Store
 import play.api.mvc._

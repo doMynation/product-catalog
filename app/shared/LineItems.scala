@@ -1,6 +1,7 @@
 package shared
 
 import play.api.libs.json.{JsArray, JsValue, Json, Writes}
+import shared.entities.LineItem
 
 object LineItems {
   implicit val lineItemsWrites: Writes[LineItems] = new Writes[LineItems] {

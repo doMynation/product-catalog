@@ -1,6 +1,6 @@
 package sales.entities
 
-import shared.IntToStringIdentifier
+import utils.IntToStringIdentifier
 
 object OrderDepartment extends IntToStringIdentifier {
   val IMPORT = "import"

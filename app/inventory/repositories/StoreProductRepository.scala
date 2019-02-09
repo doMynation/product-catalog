@@ -1,15 +1,18 @@
 package inventory.repositories
 
 import javax.inject.Inject
+
 import cats.data.OptionT
 import cats.implicits._
 import infrastructure.DatabaseExecutionContext
 import inventory.entities.ProductRule
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.Database
+
 import scala.concurrent.Future
 import shared.Types.Product
 import shared.entities.Lang
+
 import scala.collection.immutable.Queue
 import scala.collection.mutable.ListBuffer
 
@@ -74,7 +77,7 @@ final class StoreProductRepository @Inject()(db: Database, productRepo: ProductR
             WHERE $whereClause
          """
 
-    val query = DatabaseHelper.fetchOne(sql, Map(
+    val query = DB.fetchOne(sql, Map(
       "id" -> id,
       "langId" -> Lang.fromString(lang, 1).toString,
       "storeId" -> storeId.toString,
@@ -86,7 +89,7 @@ final class StoreProductRepository @Inject()(db: Database, productRepo: ProductR
   def getProductRule(id: Long, lang: String, storeId: Long): Future[Option[ProductRule]] = {
     val step1 = Future {
       val sql = "SELECT * FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.id = @ruleId"
-      val query = DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString, "storeId" -> storeId.toString))(Hydrators.productRuleExtractor) _
+      val query = DB.fetchOne(sql, Map("ruleId" -> id.toString, "storeId" -> storeId.toString))(Hydrators.productRuleExtractor) _
 
       db.withConnection(query)
     }
@@ -103,7 +106,7 @@ final class StoreProductRepository @Inject()(db: Database, productRepo: ProductR
     // Fetch the records
     val step1 = Future {
       val sql = "SELECT pr.* FROM inv_product_relations pr JOIN inv_product_stores ps ON ps.product_id = pr.related_product_id AND ps.store_id = @storeId WHERE pr.product_id = @productId"
-      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString, "storeId" -> storeId.toString))(Hydrators.productRuleExtractor) _
+      val query = DB.fetchMany(sql, Map("productId" -> productId.toString, "storeId" -> storeId.toString))(Hydrators.productRuleExtractor) _
 
       db.withConnection(query)
     }
@@ -260,8 +263,8 @@ final class StoreProductRepository @Inject()(db: Database, productRepo: ProductR
     // Get the products
     val step1 = Future {
       db.withConnection { conn =>
-        val products = DatabaseHelper.fetchMany(fetchSql, params)(Hydrators.hydrateProduct)(conn)
-        val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
+        val products = DB.fetchMany(fetchSql, params)(Hydrators.hydrateProduct)(conn)
+        val totalCount = DB.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
 
         (products, totalCount.get)
       }

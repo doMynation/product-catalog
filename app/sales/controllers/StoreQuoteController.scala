@@ -2,6 +2,7 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
+
 import cats.data.OptionT
 import cats.implicits._
 import inventory.repositories.{ProductInclusions, ProductRepository}
@@ -13,6 +14,8 @@ import sales.SalesService
 import sales.entities.Quote
 import sales.repositories.{CustomerRepository, QuoteRepository}
 import shared._
+import utils.QuoteId
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreQuoteController @Inject()(

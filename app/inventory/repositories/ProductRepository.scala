@@ -1,18 +1,20 @@
 package inventory.repositories
 
 import javax.inject.Inject
+
 import cats.data.OptionT
 import cats.instances._
 import cats.implicits._
 import infrastructure.DatabaseExecutionContext
 import inventory.entities._
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.Database
-import shared.entities.Lang
+
 import scala.collection.immutable.{ListSet, Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 import shared.Types.Product
+import shared.entities.Lang
 
 final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
 
@@ -75,7 +77,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
             WHERE $whereClause
          """
 
-    val query = DatabaseHelper.fetchOne(sql, Map(
+    val query = DB.fetchOne(sql, Map(
       "id" -> id,
       "langId" -> Lang.fromString(lang, 1).toString
     ))(Hydrators.hydrateProduct) _
@@ -97,7 +99,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          WHERE v.id = @valueId
        """
 
-    val query = DatabaseHelper.fetchOne(sql, Map(
+    val query = DB.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "valueId" -> valueId.toString
     ))(Hydrators.hydrateAttributeValue) _
@@ -120,7 +122,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          WHERE av.attribute_id = @attributeId
        """
 
-    val query = DatabaseHelper.fetchMany(sql, Map(
+    val query = DB.fetchMany(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
     ))(Hydrators.hydrateAttributeValue) _
@@ -132,7 +134,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     // Fetch the records
     val step1 = Future {
       val sql = "SELECT * FROM inv_product_relations WHERE product_id = @productId"
-      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString))(Hydrators.productRuleExtractor) _
+      val query = DB.fetchMany(sql, Map("productId" -> productId.toString))(Hydrators.productRuleExtractor) _
 
       db.withConnection(query)
     }
@@ -151,7 +153,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   def getProductRule(id: Long, lang: String): Future[Option[ProductRule]] = {
     val step1 = Future {
       val sql = "SELECT * FROM inv_product_relations pr WHERE pr.id = @ruleId"
-      val query = DatabaseHelper.fetchOne(sql, Map("ruleId" -> id.toString))(Hydrators.productRuleExtractor) _
+      val query = DB.fetchOne(sql, Map("ruleId" -> id.toString))(Hydrators.productRuleExtractor) _
 
       db.withConnection(query)
     }
@@ -166,14 +168,14 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
   def getTranslations(descriptionId: Long): Future[Seq[Translation]] = Future {
     val sql = "SELECT * FROM translations WHERE description_id = @descriptionId"
-    val query = DatabaseHelper.fetchMany(sql, Map("descriptionId" -> descriptionId.toString))(Hydrators.hydrateTranslation) _
+    val query = DB.fetchMany(sql, Map("descriptionId" -> descriptionId.toString))(Hydrators.hydrateTranslation) _
 
     db.withConnection(query)
   }
 
   def getDescription(id: Long, lang: String): Future[Option[Description]] = Future {
     val sql = "SELECT t.* FROM translations AS t JOIN languages l ON l.id = t.lang_id AND t.code = @lang WHERE description_id = @descriptionId"
-    val query = DatabaseHelper.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString))(Hydrators.hydrateDescription) _
+    val query = DB.fetchOne(sql, Map("lang" -> lang, "descriptionId" -> id.toString))(Hydrators.hydrateDescription) _
 
     db.withConnection(query)
   }
@@ -322,8 +324,8 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
     // Get the products
     val step1 = Future {
       db.withConnection { conn =>
-        val products = DatabaseHelper.fetchMany(fetchSql, params)(Hydrators.hydrateProduct)(conn)
-        val totalCount = DatabaseHelper.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
+        val products = DB.fetchMany(fetchSql, params)(Hydrators.hydrateProduct)(conn)
+        val totalCount = DB.fetchColumn[Int]("SELECT FOUND_ROWS()")(conn)
 
         (products, totalCount.get)
       }
@@ -344,7 +346,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
     // Get all records
     val step1 = Future {
-      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      val query = DB.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
         (rs.getLong("assembly_product_id"), rs.getString("tag"), rs.getBoolean("is_default"))
       } _
 
@@ -365,8 +367,8 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   def getProductStorePrices(productId: Long): Future[Seq[ProductStorePrice]] = Future {
     val sql = "SELECT * FROM inv_product_stores WHERE product_id = @productId"
 
-    val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
-      ProductStorePrice(rs.getLong("store_id"), DatabaseHelper.getNullable[BigDecimal]("price", rs))
+    val query = DB.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      ProductStorePrice(rs.getLong("store_id"), DB.getNullable[BigDecimal]("price", rs))
     } _
 
     db.withConnection(query)
@@ -390,7 +392,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          WHERE a.id = @attributeId
        """
 
-    val query = DatabaseHelper.fetchOne(sql, Map(
+    val query = DB.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "attributeId" -> attributeId.toString
     ))(Hydrators.hydrateAttribute) _
@@ -423,7 +425,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          ORDER BY pa.id
        """
 
-    val query = DatabaseHelper.fetchMany[ProductAttribute](sql, Map(
+    val query = DB.fetchMany[ProductAttribute](sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString
     ))(Hydrators.hydrateProductAttribute) _
@@ -455,7 +457,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          WHERE pa.product_id = @productId AND pa.attribute_id = @attributeId
        """
 
-    val query = DatabaseHelper.fetchOne(sql, Map(
+    val query = DB.fetchOne(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
       "productId" -> productId.toString,
       "attributeId" -> attributeId.toString,
@@ -482,7 +484,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       "langId" -> Lang.fromString(lang, 1).toString
     )
 
-    val query = DatabaseHelper.fetchOne(sql, params)(Hydrators.hydrateProductDepartment) _
+    val query = DB.fetchOne(sql, params)(Hydrators.hydrateProductDepartment) _
 
     db.withConnection(query)
   }
@@ -506,7 +508,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         "categoryId" -> id.toString
       )
 
-      val query = DatabaseHelper.fetchOne(sql, params)(Hydrators.hydrateProductCategory) _
+      val query = DB.fetchOne(sql, params)(Hydrators.hydrateProductCategory) _
 
       db.withConnection(query)
     }
@@ -540,7 +542,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
         "langId" -> Lang.fromString(lang, 1).toString
       )
 
-      val categories = DatabaseHelper.fetchMany(sql, params)(rs => {
+      val categories = DB.fetchMany(sql, params)(rs => {
         val category = Hydrators.hydrateProductCategory(rs)
         (category, rs.getInt("depth"))
       })(conn)
@@ -567,7 +569,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
          ORDER BY label ASC
        """
 
-    val query = DatabaseHelper.fetchMany(sql, Map(
+    val query = DB.fetchMany(sql, Map(
       "langId" -> Lang.fromString(lang, 1).toString,
     ))(Hydrators.hydrateAttribute) _
 
@@ -590,7 +592,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
       "langId" -> Lang.fromString(lang, 1).toString
     )
 
-    val query = DatabaseHelper.fetchMany(sql, params)(Hydrators.hydrateProductDepartment) _
+    val query = DB.fetchMany(sql, params)(Hydrators.hydrateProductDepartment) _
 
     db.withConnection(query)
   }
@@ -598,7 +600,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
   private def getProductChildren(productId: Long, lang: String): Future[Seq[ProductChild]] = {
     val step1 = Future {
       val sql = "SELECT id, sub_product_id, quantity, type, is_compiled, is_visible FROM inv_product_compositions WHERE product_id = @productId"
-      val query = DatabaseHelper.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
+      val query = DB.fetchMany(sql, Map("productId" -> productId.toString)) { rs =>
         (
           rs.getLong("sub_product_id"),
           rs.getLong("id"),
@@ -625,7 +627,7 @@ final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecu
 
   private def getCategoryParents(categoryId: Long): Future[SortedSet[String]] = Future {
     val sql = "SELECT DISTINCT parent.code FROM inv_product_categories actual JOIN inv_product_categories parent ON parent.left_id < actual.left_id AND parent.right_id > actual.right_id WHERE actual.id = @categoryId ORDER BY parent.left_id DESC"
-    val query = DatabaseHelper.fetchMany(sql, Map("categoryId" -> categoryId.toString))(_.getString("code")) _
+    val query = DB.fetchMany(sql, Map("categoryId" -> categoryId.toString))(_.getString("code")) _
 
     db.withConnection(query).to[SortedSet]
   }

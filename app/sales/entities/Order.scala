@@ -2,8 +2,9 @@ package sales.entities
 
 import java.time.LocalDateTime
 import java.util.UUID
+
 import play.api.libs.json.{Json, Writes}
-import shared.TimestampEntity
+import shared.entities.TimestampEntity
 
 object Order {
   implicit val orderWrites: Writes[Order] = Json.writes[Order]

@@ -1,9 +1,11 @@
 package inventory.entities
 
 import java.time.LocalDateTime
+
 import inventory.dtos.ProductDTO
 import play.api.libs.json._
-import shared.{DTOMappable, TimestampEntity}
+import shared.entities.TimestampEntity
+import utils.DTOMappable
 
 object Product extends DTOMappable[Product, ProductDTO] {
   implicit lazy val productWrites: Writes[Product] = Json.writes[Product]

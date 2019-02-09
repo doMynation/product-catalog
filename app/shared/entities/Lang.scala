@@ -1,6 +1,6 @@
 package shared.entities
 
-import shared.IntToStringIdentifier
+import utils.IntToStringIdentifier
 
 object Lang extends IntToStringIdentifier {
   val FR = "fr"

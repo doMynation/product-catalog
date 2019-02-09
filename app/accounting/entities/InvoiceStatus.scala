@@ -1,6 +1,6 @@
 package accounting.entities
 
-import shared.IntToStringIdentifier
+import utils.IntToStringIdentifier
 
 object InvoiceStatus extends IntToStringIdentifier {
   val IMPORT = "import"

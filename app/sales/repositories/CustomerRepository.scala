@@ -2,12 +2,14 @@ package sales.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
+
 import infrastructure.DatabaseExecutionContext
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.Logger
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Address, AddressType, Customer}
-import shared.PhoneNumber
+import shared.entities.PhoneNumber
+
 import scala.concurrent.Future
 
 final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -37,7 +39,7 @@ final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database
         "customerId" -> id.toString
       )
 
-      val customer = DatabaseHelper.fetchOne[Customer](sql, params)(hydrateCustomer)(conn)
+      val customer = DB.fetchOne[Customer](sql, params)(hydrateCustomer)(conn)
 
       customer.map(cus => cus.copy(addresses = getCustomerAddresses(cus.id)))
     }
@@ -64,7 +66,7 @@ final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database
       "customerId" -> customerId.toString
     )
 
-    DatabaseHelper.fetchMany[Address](sql, params)(hydrateAddress)(conn)
+    DB.fetchMany[Address](sql, params)(hydrateAddress)(conn)
   }
 
   def search(sr: SearchRequest, inclusions: Seq[String]): Future[SearchResult[Customer]] = ???

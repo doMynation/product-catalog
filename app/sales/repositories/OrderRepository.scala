@@ -7,10 +7,11 @@ import javax.inject.Inject
 
 import accounting.entities.InvoiceStatus
 import infrastructure.DatabaseExecutionContext
-import inventory.util.{DatabaseHelper, SearchRequest, SearchResult}
+import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities._
-import shared.{LineItem, LineItemType, OrderId}
+import shared.entities.{LineItem, LineItemType}
+import utils.OrderId
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
@@ -40,7 +41,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "orderId" -> orderId.toString
       )
 
-      DatabaseHelper.fetchOne[Order](sql, params)(hydrateOrder)(conn)
+      DB.fetchOne[Order](sql, params)(hydrateOrder)(conn)
     }
   }
 
@@ -67,7 +68,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         "orderId" -> orderId.toString
       )
 
-      DatabaseHelper.fetchOne[Order](sql, params)(hydrateOrder)(conn)
+      DB.fetchOne[Order](sql, params)(hydrateOrder)(conn)
     }
   }
 
@@ -92,12 +93,12 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
         WHERE o.id = @orderId;
         """
 
-      val expeditionDetails = DatabaseHelper.fetchOne[ExpeditionDetails](sql, Map("orderId" -> orderId.toString))(hydrateExpeditionDetails)(conn)
+      val expeditionDetails = DB.fetchOne[ExpeditionDetails](sql, Map("orderId" -> orderId.toString))(hydrateExpeditionDetails)(conn)
 
       expeditionDetails.map { details =>
         val attributesSql = "SELECT attribute_code, attribute_value FROM s_order_expedition_attributes AS oea WHERE order_id = @orderId"
 
-        val attributes = DatabaseHelper.fetchMany[(String, String)](attributesSql, Map("orderId" -> orderId.toString)) { rs =>
+        val attributes = DB.fetchMany[(String, String)](attributesSql, Map("orderId" -> orderId.toString)) { rs =>
           (rs.getString("attribute_code"), rs.getString("attribute_value"))
         }(conn).toMap
 
@@ -229,7 +230,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
               HAVING ${havings.mkString(" AND ")}
         """
 
-      val totalCount = DatabaseHelper.fetchColumn[Int](countSql, params)(conn)
+      val totalCount = DB.fetchColumn[Int](countSql, params)(conn)
       val fetchSql =
         s"""
               SELECT
@@ -252,7 +253,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
               ${sr.limit.map(lim => s"LIMIT ${sr.offset}, $lim").getOrElse("LIMIT 100")}
         """
 
-      val orders = DatabaseHelper.fetchMany(fetchSql, params)(hydrateOrder)(conn)
+      val orders = DB.fetchMany(fetchSql, params)(hydrateOrder)(conn)
 
       SearchResult(orders, totalCount.get)
     }
@@ -262,7 +263,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     db.withConnection { conn =>
       val sql = """SELECT * FROM s_order_products WHERE order_id = @orderId"""
 
-      val lineItems = DatabaseHelper.fetchMany(sql, Map("orderId" -> orderId.toString))(hydrateLineItem)(conn)
+      val lineItems = DB.fetchMany(sql, Map("orderId" -> orderId.toString))(hydrateLineItem)(conn)
       val lineItemAttributeOverrides = getLineItemsAttributeOverrides(orderId)
 
       lineItems.map(li => li.copy(attributeOverrides = lineItemAttributeOverrides.getOrElse(li.id, Seq())))
@@ -278,7 +279,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
           WHERE op.order_id = @orderId
         """
 
-    val attributesData: Seq[(Long, String, String)] = DatabaseHelper.fetchMany(sql, Map("orderId" -> orderId.toString)) { rs =>
+    val attributesData: Seq[(Long, String, String)] = DB.fetchMany(sql, Map("orderId" -> orderId.toString)) { rs =>
       (rs.getLong("product_record_id"), rs.getString("attribute_code"), rs.getString("attribute_value"))
     }(conn)
 
@@ -289,18 +290,18 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
     val status = OrderStatus.fromId(rs.getInt("o.status")).getOrElse(OrderStatus.NEW)
     val orderType = OrderType.fromId(rs.getInt("o.type_id")).getOrElse(OrderType.PARTS)
     val department = OrderDepartment.fromId(rs.getInt("o.progress_id")).getOrElse(OrderDepartment.CREATION)
-    val invoiceId = DatabaseHelper.getNullable[Long]("invoiceId", rs).map("invoiceId" -> _.toString)
-    val modelSku = DatabaseHelper.getNullable[String]("modelSku", rs).map("modelSku" -> _)
+    val invoiceId = DB.getNullable[Long]("invoiceId", rs).map("invoiceId" -> _.toString)
+    val modelSku = DB.getNullable[String]("modelSku", rs).map("modelSku" -> _)
     val invoiceStatus = for {
-      statusId <- DatabaseHelper.getNullable[Long]("invoiceStatus", rs)
+      statusId <- DB.getNullable[Long]("invoiceStatus", rs)
       statusString <- InvoiceStatus.fromId(statusId.toInt)
     } yield "invoiceStatus" -> statusString
     val metadata = Map(
       "note" -> rs.getString("o.notes"),
       "customerName" -> rs.getString("c.full_name"),
       "authorName" -> rs.getString("authorName"),
-      "cancelReason" -> DatabaseHelper.getNullable[String]("cancel_note", rs).getOrElse(""),
-      "expeditedAt" -> DatabaseHelper.getNullable[String]("expedition_expedited_date", rs).getOrElse("")
+      "cancelReason" -> DB.getNullable[String]("cancel_note", rs).getOrElse(""),
+      "expeditedAt" -> DB.getNullable[String]("expedition_expedited_date", rs).getOrElse("")
     ) ++ invoiceId ++ invoiceStatus ++ modelSku
 
     Order(
@@ -311,7 +312,7 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
       storeId = rs.getLong("branch_id"),
       customerId = rs.getLong("customer_id"),
       createdAt = rs.getTimestamp("creation_date").toLocalDateTime,
-      updatedAt = DatabaseHelper.getNullable[LocalDateTime]("modification_date", rs),
+      updatedAt = DB.getNullable[LocalDateTime]("modification_date", rs),
       tag = rs.getString("tag"),
       metadata = metadata,
       department = department,
@@ -322,8 +323,8 @@ final class OrderRepository @Inject()(@NamedDatabase("solarius") db: Database)(i
 
   private def hydrateLineItem(rs: ResultSet): LineItem = {
     val productId = rs.getLong("product_id")
-    val retailPrice = DatabaseHelper.getNullable[BigDecimal]("retail_price", rs).getOrElse(BigDecimal(0.00))
-    val salePrice = DatabaseHelper.getNullable[BigDecimal]("sale_price", rs).getOrElse(BigDecimal(0.00))
+    val retailPrice = DB.getNullable[BigDecimal]("retail_price", rs).getOrElse(BigDecimal(0.00))
+    val salePrice = DB.getNullable[BigDecimal]("sale_price", rs).getOrElse(BigDecimal(0.00))
 
     LineItem(
       rs.getLong("id"),
