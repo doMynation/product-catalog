@@ -2,8 +2,8 @@ package inventory.util
 
 import java.sql.ResultSet
 
-trait ResultSetFetchable[T] {
-  def get(rs: ResultSet): T
+trait ResultSetFetchable[A] {
+  def get(rs: ResultSet): A
 }
 
 object ResultSetFetchable {

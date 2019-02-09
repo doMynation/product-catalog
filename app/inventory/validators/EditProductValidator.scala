@@ -11,7 +11,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Try}
 
 final class EditProductValidator()(implicit ec: ExecutionContext) {
-  type Validate[T] = EitherT[Future, DomainError, T]
+  type Validate[A] = EitherT[Future, DomainError, A]
 
   //  storePrices: Seq[ProductStorePriceDTO] = List(),
   //  assemblyParts: Seq[ProductAssemblyPartDTO] = List(),

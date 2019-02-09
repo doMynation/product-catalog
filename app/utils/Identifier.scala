@@ -1,6 +1,6 @@
 package utils
 
-class Identifier[T](value: T) {
+class Identifier[A](value: A) {
   override def toString: String = value.toString
 }
 

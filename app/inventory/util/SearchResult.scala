@@ -3,7 +3,7 @@ package inventory.util
 import play.api.libs.json.{Json, Writes}
 
 object SearchResult {
-  implicit def searchResultWrites[T: Writes]: Writes[SearchResult[T]] = Json.writes[SearchResult[T]]
+  implicit def searchResultWrites[A: Writes]: Writes[SearchResult[A]] = Json.writes[SearchResult[A]]
 }
 
-case class SearchResult[T](results: Seq[T], totalCount: Int)
+case class SearchResult[A](results: Seq[A], totalCount: Int)

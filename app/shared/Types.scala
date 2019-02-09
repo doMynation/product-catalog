@@ -4,6 +4,6 @@ import inventory.validators.DomainError
 import scala.concurrent.Future
 
 object Types {
-  type ServiceResponse[T] = Future[Either[DomainError, T]]
+  type ServiceResponse[A] = Future[Either[DomainError, A]]
   type Product = inventory.entities.Product
 }

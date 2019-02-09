@@ -8,12 +8,12 @@ object DB {
   /**
     * Fetches the first record from the result of a database query.
     *
-    * @param sql        An SQL statement
-    * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
-    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `T`
-    * @return A single record of type `T`
+    * @param sql      An SQL statement
+    * @param params   A map of parameters, one for each `@var` placeholder in the SQL statement
+    * @param hydrator A function that hydrates the resulting `ResultSet` into a `A`
+    * @return A single record of type `A`
     */
-  def fetchOneImpl[T](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => T): Connection => Option[T] = {
+  def fetchOneImpl[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): Connection => Option[A] = {
     (connection: Connection) => {
       val rs = executeQuery(sql, params)(connection)
 
@@ -26,11 +26,11 @@ object DB {
     *
     * @param sql        An SQL statement
     * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
-    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `T`
+    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `A`
     * @param connection A database connection
-    * @return A single record of type `T`
+    * @return A single record of type `A`
     */
-  def fetchOne[T](sql: String, params: Map[String, String])(hydrator: ResultSet => T)(connection: Connection): Option[T] = {
+  def fetchOne[A](sql: String, params: Map[String, String])(hydrator: ResultSet => A)(connection: Connection): Option[A] = {
     val rs = executeQuery(sql, params)(connection)
 
     if (rs.next) Some(hydrator(rs)) else None
@@ -42,10 +42,10 @@ object DB {
     * @param sql        An SQL statement
     * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
     * @param connection A database connection
-    * @param extractor  An extractor for type `T`
-    * @return A single value of type `T`
+    * @param extractor  An extractor for type `A`
+    * @return A single value of type `A`
     */
-  def fetchColumn[T](sql: String, params: Map[String, String] = Map())(connection: Connection)(implicit extractor: ResultSetFetchable[T]): Option[T] = {
+  def fetchColumn[A](sql: String, params: Map[String, String] = Map())(connection: Connection)(implicit extractor: ResultSetFetchable[A]): Option[A] = {
     val rs = executeQuery(sql, params)(connection)
 
     if (rs.next) Some(extractor.get(rs))
@@ -57,13 +57,13 @@ object DB {
     *
     * @param sql        An SQL statement
     * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
-    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `T`
+    * @param hydrator   A function that hydrates the resulting `ResultSet` into a `A`
     * @param connection A database connection
-    * @return A sequence of records of type `T`
+    * @return A sequence of records of type `A`
     */
-  def fetchMany[T](sql: String, params: Map[String, String])(hydrator: ResultSet => T)(connection: Connection): Seq[T] = {
+  def fetchMany[A](sql: String, params: Map[String, String])(hydrator: ResultSet => A)(connection: Connection): Seq[A] = {
     val rs = executeQuery(sql, params)(connection)
-    var records = Queue[T]()
+    var records = Queue[A]()
 
     while (rs.next) {
       records = records :+ hydrator(rs)
@@ -221,10 +221,10 @@ object DB {
     *
     * @param columnName The column name
     * @param rs         The `ResultSet`
-    * @tparam T The type of the underlying value
-    * @return an Option[T]
+    * @tparam A The type of the underlying value
+    * @return an Option[A]
     */
-  def getNullable[T: NullableResultSetExtractor](columnName: String, rs: ResultSet): Option[T] = {
-    implicitly[NullableResultSetExtractor[T]].getOpt(columnName, rs)
+  def getNullable[A: NullableResultSetExtractor](columnName: String, rs: ResultSet): Option[A] = {
+    implicitly[NullableResultSetExtractor[A]].getOpt(columnName, rs)
   }
 }

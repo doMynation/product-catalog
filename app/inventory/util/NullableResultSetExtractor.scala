@@ -3,8 +3,8 @@ package inventory.util
 import java.sql.ResultSet
 import java.time.LocalDateTime
 
-trait NullableResultSetExtractor[T] {
-  def getOpt(columnName: String, rs: ResultSet): Option[T]
+trait NullableResultSetExtractor[A] {
+  def getOpt(columnName: String, rs: ResultSet): Option[A]
 }
 
 object NullableResultSetExtractor {

@@ -3,11 +3,11 @@ package infra.responses
 import play.api.libs.json.{JsValue, Json, Writes}
 
 object ApiResponse {
-  implicit def writes[T](implicit ev: Writes[T]): Writes[ApiResponse[T]] = Json.writes[ApiResponse[T]]
+  implicit def writes[A](implicit ev: Writes[A]): Writes[ApiResponse[A]] = Json.writes[ApiResponse[A]]
 
   def empty = ApiResponse(Json.obj())
 }
 
-case class ApiResponse[T](data: T, meta: Map[String, String] = Map()) {
-  def toJson(implicit ev: Writes[ApiResponse[T]]): JsValue = ev.writes(this)
+case class ApiResponse[A](data: A, meta: Map[String, String] = Map()) {
+  def toJson(implicit ev: Writes[ApiResponse[A]]): JsValue = ev.writes(this)
 }
