@@ -2,14 +2,11 @@ package sales.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
-
 import infra.DatabaseExecutionContext
 import inventory.util.{DB, SearchRequest, SearchResult}
-import play.api.Logger
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Address, AddressType, Customer}
 import shared.entities.PhoneNumber
-
 import scala.concurrent.Future
 
 final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {

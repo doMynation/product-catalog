@@ -1,11 +1,15 @@
 package authentication.repositories
 
+import java.sql.Connection
 import javax.inject.Inject
+
 import authentication.dtos.PasswordResetTokenDTO
 import authentication.entities.{PasswordResetToken, User}
+import cats.effect.IO
 import infra.DatabaseExecutionContext
 import inventory.util.DB
 import play.api.db.Database
+
 import scala.concurrent.Future
 
 final class UserRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
@@ -22,6 +26,12 @@ final class UserRepository @Inject()(db: Database)(implicit ec: DatabaseExecutio
     val fetch = DB.fetchOneImpl[User](sql, Map("username" -> username))
 
     db.withConnection(fetch)
+  }
+
+  def getByUsername2(username: String): IO[Option[User]] = {
+    val sql = "SELECT * FROM inv_users WHERE username = @username"
+    val fetch = DB.fetchOneImpl[User](sql, Map("username" -> username))
+    IO { db.withConnection(fetch) }
   }
 
   def getByEmail(email: String): Future[Option[User]] = Future {

@@ -26,6 +26,7 @@ class StoreInvoiceController @Inject()(
                                         productRepo: ProductRepository,
                                         salesService: SalesService
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+  private val logger = Logger("application")
 
   def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet
@@ -82,7 +83,7 @@ class StoreInvoiceController @Inject()(
       Ok(Json.toJson(searchResult))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }

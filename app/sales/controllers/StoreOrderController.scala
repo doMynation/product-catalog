@@ -2,7 +2,6 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
-
 import cats.data.OptionT
 import cats.implicits._
 import inventory.repositories.{ProductInclusions, ProductRepository}
@@ -16,7 +15,6 @@ import sales.repositories.{CustomerRepository, OrderRepository}
 import shared.repositories.CommentRepository
 import shared._
 import utils.OrderId
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreOrderController @Inject()(
@@ -27,6 +25,7 @@ class StoreOrderController @Inject()(
                                       productRepo: ProductRepository,
                                       salesService: SalesService
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+  private val logger = Logger("application")
 
   def get(orderId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet
@@ -80,7 +79,7 @@ class StoreOrderController @Inject()(
       Ok(Json.toJson(searchResult))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }
@@ -93,7 +92,7 @@ class StoreOrderController @Inject()(
       Ok(Json.toJson(searchResult))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }

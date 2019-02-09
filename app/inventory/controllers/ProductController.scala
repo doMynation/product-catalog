@@ -7,7 +7,6 @@ import inventory.repositories.ProductRepository
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
-
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.Logger
 import cats.implicits._
@@ -19,6 +18,7 @@ class ProductController @Inject()(
                                    cc: ControllerComponents,
                                    productRepo: ProductRepository,
                                  )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+  private val logger = Logger("application")
 
   def getAttributes(lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
@@ -42,7 +42,7 @@ class ProductController @Inject()(
       Ok(Json.toJson(departments))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }
@@ -54,7 +54,7 @@ class ProductController @Inject()(
       Ok(Json.toJson(categories))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }
@@ -136,7 +136,7 @@ class ProductController @Inject()(
       )
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }

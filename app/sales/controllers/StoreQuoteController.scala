@@ -25,6 +25,7 @@ class StoreQuoteController @Inject()(
                                       productRepo: ProductRepository,
                                       salesService: SalesService
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+  private val logger = Logger("application")
 
   def get(quoteId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet
@@ -73,7 +74,7 @@ class StoreQuoteController @Inject()(
       Ok(Json.toJson(searchResult))
     } recover {
       case t: Throwable =>
-        Logger.error(t.toString)
+        logger.error(t.toString)
         ServiceUnavailable("Unexpected error")
     }
   }

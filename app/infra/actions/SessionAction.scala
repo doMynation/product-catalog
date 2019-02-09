@@ -7,6 +7,7 @@ import authentication.repositories.UserRepository
 import cats.data.OptionT
 import cats.implicits._
 import infra.requests.SessionRequest
+import inventory.util.DB
 import play.api.mvc.Results._
 import play.api.mvc._
 
@@ -21,6 +22,10 @@ class SessionAction @Inject()(val parser: BodyParsers.Default, userRepo: UserRep
       username <- OptionT.fromOption[Future](request.session.get("user"))
       user <- OptionT(userRepo.getByUsername(username))
     } yield user
+
+    val r = for {
+      username <- userRepo.getByUsername2("banana")
+    } yield username
 
     userHasSession
       .map(user => block(SessionRequest(user, request)))
