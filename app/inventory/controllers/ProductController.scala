@@ -11,8 +11,8 @@ import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.Logger
 import cats.implicits._
-import infrastructure.actions.ApiAction
-import infrastructure.responses.ApiResponse
+import infra.actions.ApiAction
+import infra.responses.ApiResponse
 
 class ProductController @Inject()(
                                    apiAction: ApiAction,

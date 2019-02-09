@@ -1,4 +1,4 @@
-package infrastructure.requests
+package infra.requests
 
 import inventory.entities.Store
 import play.api.mvc._

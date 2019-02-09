@@ -3,7 +3,7 @@ package authentication.repositories
 import javax.inject.Inject
 import authentication.dtos.PasswordResetTokenDTO
 import authentication.entities.{PasswordResetToken, User}
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.util.DB
 import play.api.db.Database
 import scala.concurrent.Future

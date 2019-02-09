@@ -1,4 +1,4 @@
-package infrastructure.requests
+package infra.requests
 
 import authentication.entities.User
 import play.api.mvc._

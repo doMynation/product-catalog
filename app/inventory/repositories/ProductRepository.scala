@@ -5,7 +5,7 @@ import javax.inject.Inject
 import cats.data.OptionT
 import cats.instances._
 import cats.implicits._
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.Database

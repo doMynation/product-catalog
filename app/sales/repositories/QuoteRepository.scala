@@ -6,7 +6,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 import accounting.entities._
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Quote, QuoteStatus}

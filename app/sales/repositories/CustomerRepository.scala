@@ -3,7 +3,7 @@ package sales.repositories
 import java.sql.ResultSet
 import javax.inject.Inject
 
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.Logger
 import play.api.db.{Database, NamedDatabase}

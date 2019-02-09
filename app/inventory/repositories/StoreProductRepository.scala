@@ -4,7 +4,7 @@ import javax.inject.Inject
 
 import cats.data.OptionT
 import cats.implicits._
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.entities.ProductRule
 import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.Database

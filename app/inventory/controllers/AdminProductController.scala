@@ -17,8 +17,8 @@ import play.api.mvc.{AbstractController, ControllerComponents}
 import scala.concurrent.{ExecutionContext, Future}
 import cats.data.{EitherT, OptionT}
 import cats.implicits._
-import infrastructure.actions.SessionAction
-import infrastructure.responses.{ApiError, ApiResponse}
+import infra.actions.SessionAction
+import infra.responses.{ApiError, ApiResponse}
 import shared.Types.ServiceResponse
 
 /**

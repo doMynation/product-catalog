@@ -2,7 +2,7 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import javax.inject.Inject
-import infrastructure.DatabaseExecutionContext
+import infra.DatabaseExecutionContext
 import inventory.entities.Extrusion
 import inventory.util.DB
 import play.api.db.Database

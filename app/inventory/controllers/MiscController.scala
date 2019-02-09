@@ -2,7 +2,7 @@ package inventory.controllers
 
 import javax.inject.Inject
 
-import infrastructure.actions.ApiAction
+import infra.actions.ApiAction
 import inventory.repositories.MiscRepository
 import play.api.Logger
 import play.api.libs.json.Json

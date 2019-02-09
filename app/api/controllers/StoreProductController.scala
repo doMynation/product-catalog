@@ -3,8 +3,8 @@ package api.controllers
 import javax.inject._
 import cats.data.OptionT
 import cats.implicits._
-import infrastructure.actions.ApiAction
-import infrastructure.responses.ApiResponse
+import infra.actions.ApiAction
+import infra.responses.ApiResponse
 import inventory.repositories.{ProductRepository, StoreProductRepository}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json

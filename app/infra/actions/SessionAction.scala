@@ -1,4 +1,4 @@
-package infrastructure.actions
+package infra.actions
 
 import javax.inject.Inject
 
@@ -6,7 +6,7 @@ import authentication.entities.User
 import authentication.repositories.UserRepository
 import cats.data.OptionT
 import cats.implicits._
-import infrastructure.requests.SessionRequest
+import infra.requests.SessionRequest
 import play.api.mvc.Results._
 import play.api.mvc._
 

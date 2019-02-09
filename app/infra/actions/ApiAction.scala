@@ -1,11 +1,11 @@
-package infrastructure.actions
+package infra.actions
 
 import javax.inject.Inject
 
 import accounting.repositories.StoreRepository
 import cats.data.OptionT
 import cats.implicits._
-import infrastructure.requests.ApiRequest
+import infra.requests.ApiRequest
 import play.api.mvc.Results._
 import play.api.mvc._
 

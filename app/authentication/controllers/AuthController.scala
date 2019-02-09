@@ -8,8 +8,8 @@ import authentication.repositories.UserRepository
 import cats.data.OptionT
 import cats.effect.IO
 import cats.implicits._
-import infrastructure.actions.SessionAction
-import infrastructure.responses.{ApiError, ApiResponse}
+import infra.actions.SessionAction
+import infra.responses.{ApiError, ApiResponse}
 import inventory.validators.{DomainError, InvalidPasswordResetToken}
 import play.api.libs.json.{JsError, JsSuccess, Json}
 import play.api.mvc._

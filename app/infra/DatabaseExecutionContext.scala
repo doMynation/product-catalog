@@ -1,4 +1,4 @@
-package infrastructure
+package infra
 
 import javax.inject.Inject
 import akka.actor.ActorSystem
