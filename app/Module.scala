@@ -1,6 +1,9 @@
 import com.google.inject.{AbstractModule, Provides}
 import java.time.Clock
-import inventory.util.FileUploader
+
+import infra.DatabaseExecutionContext
+import inventory.util.{DB, FileUploader}
+import play.api.db.Database
 import play.api.libs.ws.WSClient
 import play.api.{Configuration, Environment}
 import utils.Mailgun
@@ -21,5 +24,10 @@ class Module(env: Environment, config: Configuration) extends AbstractModule {
     val mailgunApiKey = config.get[String]("mailgun.apiKey")
 
     new Mailgun(ws, mailgunDomain, mailgunApiKey)
+  }
+
+  @Provides
+  def provideDB(db: Database)(implicit ec: DatabaseExecutionContext): DB = {
+    new DB(db)
   }
 }

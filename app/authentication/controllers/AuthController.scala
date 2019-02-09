@@ -1,26 +1,26 @@
 package authentication.controllers
 
 import javax.inject.Inject
-
 import authentication.AuthService
+import authentication.entities.User
 import authentication.forms.{ChangePasswordForm, LoginForm}
 import authentication.repositories.UserRepository
-import cats.data.OptionT
-import cats.effect.IO
+import cats.data.{EitherT, OptionT}
 import cats.implicits._
 import infra.actions.SessionAction
+import infra.db.DBIO
 import infra.responses.{ApiError, ApiResponse}
-import inventory.validators.{DomainError, InvalidPasswordResetToken}
-import play.api.libs.json.{JsError, JsSuccess, Json}
+import inventory.util.DB
+import inventory.validators.{DomainError, GenericError, InvalidPasswordResetToken}
+import play.api.libs.json.Json
 import play.api.mvc._
-import tsec.passwordhashers.jca.BCrypt
-
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
 class AuthController @Inject()(cc: ControllerComponents,
-                               userRepo: UserRepository,
                                authAction: SessionAction,
                                authService: AuthService,
+                               userRepo: UserRepository,
+                               db: DB,
                               )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def logout = authAction {
@@ -28,49 +28,46 @@ class AuthController @Inject()(cc: ControllerComponents,
   }
 
   def changePassword = Action.async(parse.json) { req =>
-    val of = req.body.validate[ChangePasswordForm]
+    val error: DomainError = InvalidPasswordResetToken
+    val program = for {
+      form <- EitherT.fromOption[DBIO](req.body.asOpt[ChangePasswordForm], error)
+      _ <- authService.changeUserPassword(form)
+    } yield ()
 
-    of match {
-      case form: JsSuccess[ChangePasswordForm] =>
-        val result: Future[Either[DomainError, Unit]] = authService.changeUserPassword(form.get)
+    val result = program
+      .map(_ => Ok(ApiResponse.empty.toJson))
+      .valueOr {
+        case InvalidPasswordResetToken => Forbidden(ApiError(InvalidPasswordResetToken.code, InvalidPasswordResetToken.errorMessage).toJson)
+        case err => BadRequest(ApiError(err.code, err.errorMessage).toJson)
+      }
 
-        result.map {
-          case Right(_) => Ok(ApiResponse.empty.toJson)
-          case Left(InvalidPasswordResetToken) => Forbidden(ApiError(InvalidPasswordResetToken.code, InvalidPasswordResetToken.errorMessage).toJson)
-          case Left(err) => BadRequest(ApiError(err.code, err.errorMessage).toJson)
-        }
-      case _ => Future.successful(BadRequest("Invalid request"))
-    }
+    db.runAsync(result)
   }
 
   def resetPassword = Action.async(parse.json) { req =>
-    val eo = (req.body \ "email").asOpt[String]
+    val error: DomainError = GenericError
+    val program = for {
+      email <- EitherT.fromOption[DBIO]((req.body \ "email").asOpt[String], error)
+      _ <- authService.resetUserPassword(email)
+    } yield ()
 
-    if (eo.isEmpty) Future.successful(BadRequest("Invalid request"))
+    val response = Ok(ApiResponse.empty.toJson)
+    val result: DBIO[Result] = program
+      .map(_ => response)
+      .valueOr(_ => response)
 
-    val result = authService.resetUserPassword(eo.get)
-
-    result.map {
-      case Right(_) => Ok(ApiResponse.empty.toJson)
-      case Left(_) => Ok(ApiResponse.empty.toJson) // Return a success even when the email wasn't found
-    }
+    db.runAsync(result)
   }
 
   def verifyPasswordToken(token: String) = Action.async {
-    val fop = OptionT(userRepo.getPasswordResetToken(token))
+    val program = for {
+      prt <- OptionT(userRepo.getPasswordResetToken(token))
+      _ <- OptionT.pure[DBIO](!prt.isExpired)
+    } yield prt
 
-    fop
-      .map(prt => {
-        if (prt.isExpired) NotFound("Invalid Token")
-        else Ok(ApiResponse(prt).toJson)
-      })
+    OptionT(db.runAsync(program.value))
+      .map(prt => Ok(ApiResponse(prt).toJson))
       .getOrElse(NotFound("Invalid token"))
-  }
-
-  def signup(username: String, password: String) = Action {
-    val userId = userRepo.createUser(username, BCrypt.hashpwUnsafe(password))
-
-    Ok(s"Created $userId")
   }
 
   def check = authAction {
@@ -78,17 +75,15 @@ class AuthController @Inject()(cc: ControllerComponents,
   }
 
   def login = Action.async(parse.json) { request =>
-    val validateCredentials = for {
-      form <- OptionT.fromOption[IO](request.body.asOpt[LoginForm])
+    val program: OptionT[DBIO, User] = for {
+      form <- OptionT.fromOption[DBIO](request.body.asOpt[LoginForm])
       user <- authService.verify(form)
     } yield user
 
-    validateCredentials
-      .map(user =>
-        Ok(Json.toJson(ApiResponse(user)))
-          .withSession("user" -> user.username)
-      )
-      .getOrElse(BadRequest("Nope"))
-      .unsafeToFuture
+    val result: DBIO[Result] = program
+      .map(user => Ok(Json.toJson(ApiResponse(user))).withSession("user" -> user.username))
+      .getOrElse(BadRequest("Invalid credentials"))
+
+    db.runAsync(result)
   }
 }

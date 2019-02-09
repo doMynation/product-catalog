@@ -53,7 +53,6 @@ GET           /stores/:storeId/quotes/$uuid<[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-
 POST          /auth                                                                                                               authentication.controllers.AuthController.login()
 GET           /auth/check                                                                                                         authentication.controllers.AuthController.check()
 GET           /auth/logout                                                                                                        authentication.controllers.AuthController.logout()
-GET           /auth/signup                                                                                                        authentication.controllers.AuthController.signup(username: String, password: String)
 
 # Passwords
 GET           /password/:token                                                                                                    authentication.controllers.AuthController.verifyPasswordToken(token: String)

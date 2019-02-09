@@ -1,9 +1,50 @@
 package inventory.util
 
 import java.sql._
+
+import infra.DatabaseExecutionContext
+import infra.db.DBIO
+import inventory.util.DB.{DBIO2}
+import play.api.db.Database
+
 import scala.collection.immutable.Queue
+import scala.concurrent.Future
 
 object DB {
+  type DBIO2[A] = Connection => A
+
+  def fetchOneDBIO[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): DBIO[Option[A]] = {
+    val f = (connection: Connection) => {
+      val rs = executeQuery(sql, params)(connection)
+
+      if (rs.next) Some(hydrator(rs)) else None
+    }
+
+    DBIO(f)
+  }
+
+  /**
+    * Fetches many records from the database.
+    *
+    * @param sql      An SQL statement
+    * @param params   A map of parameters, one for each `@var` placeholder in the SQL statement
+    * @param hydrator A function that hydrates the resulting `ResultSet` into a `A`
+    * @return A sequence of records of type `A`
+    */
+  def fetchManyDBIO[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): DBIO[Seq[A]] = {
+    val f = (connection: Connection) => {
+      val rs = executeQuery(sql, params)(connection)
+      var records = Queue[A]()
+
+      while (rs.next) {
+        records = records :+ hydrator(rs)
+      }
+
+      records
+    }
+
+    DBIO(f)
+  }
 
   /**
     * Fetches the first record from the result of a database query.
@@ -13,11 +54,32 @@ object DB {
     * @param hydrator A function that hydrates the resulting `ResultSet` into a `A`
     * @return A single record of type `A`
     */
-  def fetchOneImpl[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): Connection => Option[A] = {
+  def fetchOneImpl[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): DBIO2[Option[A]] = {
     (connection: Connection) => {
       val rs = executeQuery(sql, params)(connection)
 
       if (rs.next) Some(hydrator(rs)) else None
+    }
+  }
+
+  /**
+    * Fetches many records from the database.
+    *
+    * @param sql      An SQL statement
+    * @param params   A map of parameters, one for each `@var` placeholder in the SQL statement
+    * @param hydrator A function that hydrates the resulting `ResultSet` into a `A`
+    * @return A sequence of records of type `A`
+    */
+  def fetchManyImpl[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A): DBIO2[Seq[A]] = {
+    (connection: Connection) => {
+      val rs = executeQuery(sql, params)(connection)
+      var records = Queue[A]()
+
+      while (rs.next) {
+        records = records :+ hydrator(rs)
+      }
+
+      records
     }
   }
 
@@ -227,4 +289,15 @@ object DB {
   def getNullable[A: NullableResultSetExtractor](columnName: String, rs: ResultSet): Option[A] = {
     implicitly[NullableResultSetExtractor[A]].getOpt(columnName, rs)
   }
+}
+
+final class DB(db: Database)(implicit ec: DatabaseExecutionContext) {
+
+  def run[A](program: DBIO[A]): A = db.withConnection(program.run)
+
+  def runAsync[A](program: DBIO[A]): Future[A] = Future(run(program))
+
+  def transac[A](program: DBIO[A]): A = db.withTransaction(program.run)
+
+  def transacAsync[A](program: DBIO[A]): Future[A] = Future(transac(program))
 }
