@@ -18,12 +18,12 @@ class SessionAction @Inject()(val parser: BodyParsers.Default, userRepo: UserRep
 
   override def invokeBlock[A](request: Request[A], block: SessionRequest[A] => Future[Result]) = {
     // Check if the user has an active session
-    val query = (for {
+    val program = for {
       username <- OptionT.fromOption[DBIO](request.session.get("user"))
       user <- OptionT(userRepo.getByUsername(username))
-    } yield user).value
+    } yield user
 
-    val userHasSession: Future[Option[User]] = db.runAsync(query)
+    val userHasSession: Future[Option[User]] = db.runAsync(program.value)
 
     OptionT(userHasSession)
       .map(user => block(SessionRequest(user, request)))

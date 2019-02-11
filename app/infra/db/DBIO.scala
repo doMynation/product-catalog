@@ -16,8 +16,8 @@ object DBIO {
 
 final class DBIO[A](val run: Connection => A) {
   def map[B](f: A => B): DBIO[B] =
-    new DBIO((c: Connection) => f(run(c)))
+    new DBIO(f compose run)
 
   def flatMap[B](f: A => DBIO[B]): DBIO[B] =
-    DBIO((c: Connection) => f(run(c)).run(c))
+    new DBIO((c: Connection) => f(run(c)).run(c))
 }
