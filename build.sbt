@@ -16,6 +16,13 @@ libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.41"
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "3.1.1"
 libraryDependencies += "org.typelevel" %% "cats-core" % "1.0.1"
 
+lazy val doobieVersion = "0.6.0"
+libraryDependencies ++= Seq(
+  "org.tpolecat" %% "doobie-core" % doobieVersion,
+  "org.tpolecat" %% "doobie-postgres" % doobieVersion,
+  "org.tpolecat" %% "doobie-specs2" % doobieVersion
+)
+
 val tsecV = "0.0.1-M11"
 libraryDependencies += "io.github.jmcardon" %% "tsec-common" % tsecV
 libraryDependencies += "io.github.jmcardon" %% "tsec-password" % tsecV

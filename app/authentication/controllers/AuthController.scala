@@ -1,17 +1,16 @@
 package authentication.controllers
 
-import javax.inject.Inject
 import authentication.AuthService
 import authentication.entities.User
 import authentication.forms.{ChangePasswordForm, LoginForm}
-import authentication.repositories.UserRepository
+import authentication.repositories.{UserRepositoryDoobie}
 import cats.data.{EitherT, OptionT}
+import cats.effect.IO
 import cats.implicits._
 import infra.actions.SessionAction
-import infra.db.DBIO
 import infra.responses.{ApiError, ApiResponse}
-import inventory.util.DB
 import inventory.validators.{DomainError, GenericError, InvalidPasswordResetToken}
+import javax.inject.Inject
 import play.api.libs.json.Json
 import play.api.mvc._
 import scala.concurrent.ExecutionContext
@@ -19,8 +18,7 @@ import scala.concurrent.ExecutionContext
 class AuthController @Inject()(cc: ControllerComponents,
                                authAction: SessionAction,
                                authService: AuthService,
-                               userRepo: UserRepository,
-                               db: DB,
+                               doobieRepo: UserRepositoryDoobie,
                               )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def logout = authAction {
@@ -30,7 +28,7 @@ class AuthController @Inject()(cc: ControllerComponents,
   def changePassword = Action.async(parse.json) { req =>
     val error: DomainError = InvalidPasswordResetToken
     val program = for {
-      form <- EitherT.fromOption[DBIO](req.body.asOpt[ChangePasswordForm], error)
+      form <- EitherT.fromOption[IO](req.body.asOpt[ChangePasswordForm], error)
       _ <- authService.changeUserPassword(form)
     } yield ()
 
@@ -41,33 +39,35 @@ class AuthController @Inject()(cc: ControllerComponents,
         case err => BadRequest(ApiError(err.code, err.errorMessage).toJson)
       }
 
-    db.runAsync(result)
+    result.unsafeToFuture
   }
 
   def resetPassword = Action.async(parse.json) { req =>
+    val email = (req.body \ "email").asOpt[String]
     val error: DomainError = GenericError
+    val response = Ok(ApiResponse.empty.toJson)
+
     val program = for {
-      email <- EitherT.fromOption[DBIO]((req.body \ "email").asOpt[String], error)
+      email <- EitherT.fromOption[IO](email, error)
       _ <- authService.resetUserPassword(email)
     } yield ()
 
-    val response = Ok(ApiResponse.empty.toJson)
-    val result: DBIO[Result] = program
+    program
       .map(_ => response)
       .valueOr(_ => response)
-
-    db.runAsync(result)
+      .unsafeToFuture
   }
 
   def verifyPasswordToken(token: String) = Action.async {
     val program = for {
-      prt <- OptionT(userRepo.getPasswordResetToken(token))
-      _ <- OptionT.pure[DBIO](!prt.isExpired)
+      prt <- OptionT(doobieRepo.getPasswordResetToken(token))
+      if !prt.isExpired
     } yield prt
 
-    OptionT(db.runAsync(program.value))
+    program
       .map(prt => Ok(ApiResponse(prt).toJson))
       .getOrElse(NotFound("Invalid token"))
+      .unsafeToFuture
   }
 
   def check = authAction {
@@ -75,15 +75,15 @@ class AuthController @Inject()(cc: ControllerComponents,
   }
 
   def login = Action.async(parse.json) { request =>
-    val program: OptionT[DBIO, User] = for {
-      form <- OptionT.fromOption[DBIO](request.body.asOpt[LoginForm])
+    val program: OptionT[IO, User] = for {
+      form <- OptionT.fromOption[IO](request.body.asOpt[LoginForm])
       user <- authService.verify(form)
     } yield user
 
-    val result: DBIO[Result] = program
+    val result: IO[Result] = program
       .map(user => Ok(Json.toJson(ApiResponse(user))).withSession("user" -> user.username))
       .getOrElse(BadRequest("Invalid credentials"))
 
-    db.runAsync(result)
+    result.unsafeToFuture
   }
 }

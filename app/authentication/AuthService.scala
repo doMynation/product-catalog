@@ -7,49 +7,50 @@ import akka.actor.ActorSystem
 import authentication.dtos.PasswordResetTokenDTO
 import authentication.entities.User
 import authentication.forms.{ChangePasswordForm, LoginForm}
-import authentication.repositories.UserRepository
+import authentication.repositories.{UserRepositoryDoobie}
 import inventory.validators.{DomainError, InvalidPasswordResetToken, UserNotFound}
 import tsec.passwordhashers.PasswordHash
 import tsec.passwordhashers.jca.BCrypt
 import utils.Mailgun
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext}
 import scala.concurrent.duration._
 import cats.data._
+import cats.effect.IO
 import cats.implicits._
-import infra.db.DBIO
 
-final class AuthService @Inject()(userRepo: UserRepository, mailgun: Mailgun, actorSystem: ActorSystem)(implicit executionContext: ExecutionContext) {
-  def verify(form: LoginForm): OptionT[DBIO, User] =
+final class AuthService @Inject()(userRepo: UserRepositoryDoobie, mailgun: Mailgun, actorSystem: ActorSystem)(implicit ec: ExecutionContext) {
+  def verify(form: LoginForm): OptionT[IO, User] =
     for {
-      _ <- OptionT.fromOption[DBIO](form.validate.toOption)
+      _ <- OptionT.fromOption[IO](form.validate.toOption)
       user <- OptionT(userRepo.getByUsername(form.username))
-      isValid <- OptionT.pure[DBIO](verifyPassword(form.password, user.passwordHash))
+      isValid <- OptionT.liftF(verifyPassword(form.password, user.passwordHash))
       if isValid
     } yield user
 
-  def changeUserPassword(form: ChangePasswordForm): EitherT[DBIO, DomainError, Unit] =
+  def changeUserPassword(form: ChangePasswordForm): EitherT[IO, DomainError, Unit] =
     for {
-      _ <- EitherT.fromEither[DBIO](form.validate) // Validate form
-      prt <- EitherT.fromOptionF(userRepo.getPasswordResetToken(form.token), InvalidPasswordResetToken) // Find matching reset token
-      _ <- EitherT.fromEither[DBIO](Either.cond(!prt.isExpired, prt, InvalidPasswordResetToken)) // Check token expiry
-      user <- EitherT.fromOptionF(userRepo.getById(prt.userId), InvalidPasswordResetToken) // Find matching user
-      hashedPassword <- EitherT.rightT[DBIO, DomainError](BCrypt.hashpwUnsafe(form.password)) // Hash the new password
-      _ <- EitherT.right[DomainError](userRepo.updateUserPassword(user.id, hashedPassword.toString)) // Update the user password
-      _ <- EitherT.right[DomainError](userRepo.expireUserPasswordResetTokens(user.id)) // Consume the token
-      _ <- EitherT.rightT[DBIO, DomainError](sendPasswordChangedConfirmationEmail(user)) // Send confirmation email
+      _ <- EitherT.fromEither[IO](form.validate) // 1) Validate form
+      prt <- EitherT.fromOptionF(userRepo.getPasswordResetToken(form.token), InvalidPasswordResetToken) // 2) Find matching reset token
+      _ <- EitherT.fromEither[IO](Either.cond(!prt.isExpired, prt, InvalidPasswordResetToken)) // 3) Check token expiry
+      user <- EitherT.fromOptionF(userRepo.getById(prt.userId), InvalidPasswordResetToken) // 4) Find matching user
+      hashedPassword <- EitherT.right[DomainError](BCrypt.hashpw[IO](form.password)) // 5) Hash the new password
+      _ <- EitherT.right[DomainError](userRepo.updateUserPassword(user.id, hashedPassword.toString)) // 6) Update the user password
+      _ <- EitherT.right[DomainError](userRepo.expireUserPasswordResetTokens(user.id)) // 7) Consume the token
+      _ <- EitherT.right[DomainError](IO.shift(ec)) // 9) Shift to main thread
+      _ <- EitherT.rightT[IO, DomainError](sendPasswordChangedConfirmationEmail(user)) // 10) Send confirmation email
     } yield ()
 
-  def resetUserPassword(email: String): EitherT[DBIO, DomainError, Unit] =
+  def resetUserPassword(email: String): EitherT[IO, DomainError, Unit] =
     for {
       user <- EitherT.fromOptionF(userRepo.getByEmail(email), UserNotFound(email)) // Find the user
-      prtDto <- EitherT.rightT[DBIO, DomainError](generatePasswordResetToken(user)) // Generate new token
+      prtDto <- EitherT.rightT[IO, DomainError](generatePasswordResetToken(user)) // Generate new token
       _ <- EitherT.right[DomainError](userRepo.expireUserPasswordResetTokens(user.id)) // Expire all existing tokens
       _ <- EitherT.right[DomainError](userRepo.createPasswordResetToken(prtDto)) // Save new token
-      _ <- EitherT.rightT[DBIO, DomainError](sendPasswordResetConfirmationEmail(user, prtDto.token)) // Send confirmation email
+      _ <- EitherT.rightT[IO, DomainError](sendPasswordResetConfirmationEmail(user, prtDto.token)) // Send confirmation email
     } yield ()
 
-  private def verifyPassword(password: String, hash: String): Boolean =
-    BCrypt.checkpwUnsafe(password, PasswordHash[BCrypt](hash))
+  private def verifyPassword(password: String, hash: String): IO[Boolean] =
+    BCrypt.checkpwBool[IO](password, PasswordHash[BCrypt](hash))
 
   private def sendPasswordResetConfirmationEmail(user: User, token: String): Unit = {
     actorSystem.scheduler.scheduleOnce(5 seconds) {

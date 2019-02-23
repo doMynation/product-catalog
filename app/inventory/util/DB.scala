@@ -3,10 +3,8 @@ package inventory.util
 import java.sql._
 
 import infra.DatabaseExecutionContext
-import infra.db.DBIO
 import play.api.db.Database
 import scala.collection.immutable.Queue
-import scala.concurrent.Future
 
 object DB {
   def fetchOne2[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A, conn: Connection): Option[A] = {
@@ -224,13 +222,4 @@ object DB {
 }
 
 final class DB(db: Database)(implicit ec: DatabaseExecutionContext) {
-  def run[A](program: DBIO[A]): A = db.withConnection(program.run)
-
-  def runAsync[A](program: DBIO[A]): Future[A] = Future(run(program))
-
-  def transac[A](program: DBIO[A]): A = db.withTransaction(program.run)
-
-  def transacAsync[A](program: DBIO[A]): Future[A] = Future(transac(program))
-
-  def withConnection[A](f: Connection => A): A = db.withConnection(f)
 }

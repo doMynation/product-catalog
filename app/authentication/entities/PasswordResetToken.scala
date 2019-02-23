@@ -2,7 +2,6 @@ package authentication.entities
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
-
 import play.api.libs.json.{Json, Writes}
 
 object PasswordResetToken {
