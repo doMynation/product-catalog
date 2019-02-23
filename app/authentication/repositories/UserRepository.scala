@@ -12,7 +12,7 @@ import utils.imports.implicits._
 import infra.DatabaseExecutionContext
 import shared.Types.Tx
 
-final class UserRepositoryDoobie @inject.Inject()(res: Tx)(implicit ec: DatabaseExecutionContext) {
+final class UserRepository @inject.Inject()(res: Tx)(implicit ec: DatabaseExecutionContext) {
 
   def getById(id: Long): IO[Option[User]] = {
     val sql = sql"SELECT id, email, full_name, username, password_hash, creation_date FROM inv_users WHERE id = $id"

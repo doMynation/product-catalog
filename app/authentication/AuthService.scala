@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import authentication.dtos.PasswordResetTokenDTO
 import authentication.entities.User
 import authentication.forms.{ChangePasswordForm, LoginForm}
-import authentication.repositories.{UserRepositoryDoobie}
+import authentication.repositories.{UserRepository}
 import inventory.validators.{DomainError, InvalidPasswordResetToken, UserNotFound}
 import tsec.passwordhashers.PasswordHash
 import tsec.passwordhashers.jca.BCrypt
@@ -18,7 +18,7 @@ import cats.data._
 import cats.effect.IO
 import cats.implicits._
 
-final class AuthService @Inject()(userRepo: UserRepositoryDoobie, mailgun: Mailgun, actorSystem: ActorSystem)(implicit ec: ExecutionContext) {
+final class AuthService @Inject()(userRepo: UserRepository, mailgun: Mailgun, actorSystem: ActorSystem)(implicit ec: ExecutionContext) {
   def verify(form: LoginForm): OptionT[IO, User] =
     for {
       _ <- OptionT.fromOption[IO](form.validate.toOption)

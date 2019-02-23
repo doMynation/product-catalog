@@ -3,7 +3,7 @@ package authentication.controllers
 import authentication.AuthService
 import authentication.entities.User
 import authentication.forms.{ChangePasswordForm, LoginForm}
-import authentication.repositories.{UserRepositoryDoobie}
+import authentication.repositories.{UserRepository}
 import cats.data.{EitherT, OptionT}
 import cats.effect.IO
 import cats.implicits._
@@ -18,7 +18,7 @@ import scala.concurrent.ExecutionContext
 class AuthController @Inject()(cc: ControllerComponents,
                                authAction: SessionAction,
                                authService: AuthService,
-                               doobieRepo: UserRepositoryDoobie,
+                               doobieRepo: UserRepository,
                               )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
   def logout = authAction {

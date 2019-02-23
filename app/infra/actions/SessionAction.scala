@@ -2,7 +2,7 @@ package infra.actions
 
 import javax.inject.Inject
 import authentication.entities.User
-import authentication.repositories.UserRepositoryDoobie
+import authentication.repositories.UserRepository
 import cats.data.OptionT
 import cats.effect.IO
 import cats.implicits._
@@ -11,7 +11,7 @@ import play.api.mvc.Results._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 
-class SessionAction @Inject()(val parser: BodyParsers.Default, userRepo: UserRepositoryDoobie)
+class SessionAction @Inject()(val parser: BodyParsers.Default, userRepo: UserRepository)
                              (implicit val executionContext: ExecutionContext) extends ActionBuilder[SessionRequest, AnyContent] {
 
   override def invokeBlock[A](request: Request[A], block: SessionRequest[A] => Future[Result]) = {

@@ -220,6 +220,3 @@ object DB {
     implicitly[NullableResultSetExtractor[A]].getOpt(columnName, rs)
   }
 }
-
-final class DB(db: Database)(implicit ec: DatabaseExecutionContext) {
-}
