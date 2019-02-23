@@ -30,8 +30,8 @@ object Hydrators {
       "mpn" -> DB.getNullable[String]("mpn", rs).getOrElse(""),
       "imageUrl" -> DB.getNullable[String]("image_url", rs).getOrElse(""),
       "isKit" -> rs.getInt("is_kit").toString,
-      "stickerId" -> rs.getString("sticker_template_id"),
-      "extrusionId" -> rs.getString("extrusion_template_id"),
+      "stickerId" -> DB.getNullable[String]("sticker_template_id", rs).getOrElse(""),
+      "extrusionId" -> DB.getNullable[String]("extrusion_template_id", rs).getOrElse(""),
     )
 
     val tags = DB.getNullable[String]("tags", rs) match {
