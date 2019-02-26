@@ -5,14 +5,12 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
-
 import inventory.dtos._
 import inventory.util.DB
 import play.api.db.Database
 import shared.Types.Product
 import shared.dtos.TranslationDTO
 import shared.entities.Lang
-
 import scala.util.Try
 import utils.imports.implicits._
 

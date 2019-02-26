@@ -1,5 +1,6 @@
 import java.time.Clock
-import cats.effect.IO
+
+import cats.effect.{ContextShift, IO}
 import cats.implicits._
 import com.google.inject.{AbstractModule, Provides}
 import doobie.util.ExecutionContexts
@@ -10,6 +11,7 @@ import play.api.libs.ws.WSClient
 import play.api.{Configuration, Environment}
 import shared.Types.Tx
 import utils.Mailgun
+
 import scala.concurrent.ExecutionContext
 
 class Module(env: Environment, config: Configuration) extends AbstractModule {
@@ -35,17 +37,19 @@ class Module(env: Environment, config: Configuration) extends AbstractModule {
   //    val driver = config.get[String]("db.default.driver")
   //    val url = config.get[String]("db.default.url")
   //    val dbUser = config.get[String]("db.default.username")
-  //    val dbPassword = config.get[String]("db.default.password")
+  //    val dbPassworde= config.get[String]("db.default.password")
   //
   //    implicit val cs = IO.contextShift(dec)
   //    Transactor.fromDriverManager[IO](driver, url, dbUser, dbPassword)
   //  }
 
   @Provides
-  def provideTransactor(db: Database)(implicit ec: ExecutionContext): Tx = {
-    implicit val cs = IO.contextShift(ec)
-    println(db.dataSource.getClass.getName)
+  def provideContextShift()(implicit ec: ExecutionContext): ContextShift[IO] = {
+    IO.contextShift(ec)
+  }
 
+  @Provides
+  def provideTransactor(db: Database)(implicit cs: ContextShift[IO]): Tx = {
     for {
       ce <- ExecutionContexts.fixedThreadPool[IO](32) // our connect EC
       te <- ExecutionContexts.cachedThreadPool[IO] // our transaction EC

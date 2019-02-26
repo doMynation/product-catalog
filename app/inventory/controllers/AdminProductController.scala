@@ -1,7 +1,6 @@
 package inventory.controllers
 
 import javax.inject.Inject
-
 import inventory.ProductService
 import inventory.dtos.{AttributeIdValuePair, ProductDepartmentDTO}
 import inventory.entities.Admin.ProductEditData
@@ -12,6 +11,7 @@ import inventory.util.FileUploader
 import inventory.validators.{DepartmentNotFound, DomainError, GenericError, InvalidPayload}
 import play.api.libs.json.Json
 import play.api.mvc.{AbstractController, ControllerComponents}
+
 import scala.concurrent.{ExecutionContext, Future}
 import cats.data.{EitherT, OptionT}
 import cats.implicits._

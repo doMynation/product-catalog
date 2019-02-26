@@ -1,22 +1,19 @@
 package inventory.repositories
 
-import javax.inject.Inject
-
 import cats.data.OptionT
-import cats.instances._
 import cats.implicits._
 import infra.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DB, SearchRequest, SearchResult}
+import javax.inject.Inject
 import play.api.db.Database
-
+import shared.Types.Product
+import shared.entities.Lang
 import scala.collection.immutable.{ListSet, Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
-import shared.Types.Product
-import shared.entities.Lang
 
-final class ProductRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
+final class ProductRepository @Inject()(db: Database)(implicit dec: DatabaseExecutionContext) {
 
   def getById(id: Long, lang: String): Future[Option[Product]] =
     getProduct("id", id.toString, lang)
