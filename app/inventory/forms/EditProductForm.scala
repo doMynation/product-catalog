@@ -1,14 +1,18 @@
 package inventory.forms
 
 import java.time.LocalDateTime
+
+import cats.data.EitherT
+import cats.effect.IO
 import inventory.dtos._
-import inventory.repositories.{MiscRepository, ProductRepository}
+import inventory.repositories.{MiscRepository, ProductReadRepository}
 import inventory.validators.{DomainError, EditProductValidator}
 import shared.dtos.TranslationDTO
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
 import utils.DTOMappable
+
 import scala.concurrent.{ExecutionContext, Future}
 
 object EditProductForm extends DTOMappable[EditProductForm, ProductDTO] {
@@ -91,7 +95,7 @@ case class EditProductForm(
                             isCustom: Boolean = false,
                             isEnabled: Boolean = true) {
 
-  def validate(productRepo: ProductRepository, miscRepo: MiscRepository)(implicit ec: ExecutionContext): Future[Either[DomainError, ProductDTO]] =
+  def validate(productRepo: ProductReadRepository, miscRepo: MiscRepository): EitherT[IO, DomainError, ProductDTO] =
     (new EditProductValidator).validate(this, productRepo, miscRepo)
 }
 

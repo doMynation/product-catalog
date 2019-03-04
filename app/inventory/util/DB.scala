@@ -131,9 +131,9 @@ object DB {
     * @param sql        An SQL statement
     * @param params     A map of parameters, one for each `@var` placeholder in the SQL statement
     * @param connection A database connection
-    * @return An `Integer` representing the number of affected rows
+    * @return An `Int` representing the number of affected rows
     */
-  def executeUpdate(sql: String, params: Map[String, String])(connection: Connection): Integer = {
+  def executeUpdate(sql: String, params: Map[String, String])(connection: Connection): Int = {
     val (translatedSql, orderedParams) = translate(sql, params)
     val stmt = prepareStatement(translatedSql, orderedParams)(connection)
 

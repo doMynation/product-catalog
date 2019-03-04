@@ -15,6 +15,8 @@ object ProductAttribute extends DTOMappable[ProductAttribute, ProductAttributeDT
       entity.isEditable,
       entity.isReference
     )
+
+  def tupled = (ProductAttribute.apply _).tupled
 }
 
 case class ProductAttribute(

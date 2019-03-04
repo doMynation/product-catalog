@@ -13,7 +13,7 @@ object ProductDepartmentDTO {
     ) (ProductDepartmentDTO.apply _)
 }
 
-case class ProductDepartmentDTO(code: String, translations: Seq[TranslationDTO] = Seq()) {
+case class ProductDepartmentDTO(code: String, translations: List[TranslationDTO] = List()) {
   def validate: Either[DomainError, ProductDepartmentDTO] =
     for {
       _ <- Either.cond(code.nonEmpty, code, InvalidCode)

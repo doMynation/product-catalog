@@ -19,7 +19,7 @@ class AuthController @Inject()(cc: ControllerComponents,
                                authAction: SessionAction,
                                authService: AuthService,
                                doobieRepo: UserRepository,
-                              )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+                              ) extends AbstractController(cc) {
 
   def logout = authAction {
     Ok.withNewSession

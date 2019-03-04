@@ -7,46 +7,51 @@ import inventory.forms.EditProductForm
 import inventory.repositories._
 import inventory.validators._
 import play.api.db.Database
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
-import cats.data.{EitherT, OptionT}
+import cats.data.{EitherT}
+import cats.effect.{ContextShift, IO}
+import cats.effect.implicits._
 import cats.implicits._
-import shared.Types.ServiceResponse
+import shared.Types.{ServiceResponse2}
 
-final class ProductService @Inject()(readRepo: ProductRepository, writeRepository: ProductWriteRepository, miscRepository: MiscRepository, db: Database)(implicit ec: ExecutionContext) {
+final class ProductService @Inject()(
+                                      doobieRepo: ProductReadRepository,
+                                      writeRepository: ProductWriteRepository,
+                                      miscRepository: MiscRepository,
+                                      db: Database
+                                    )(implicit cs: ContextShift[IO]) {
 
-  def updateProduct(productId: Long, form: EditProductForm): ServiceResponse[Unit] = {
-    (for {
-      product <- EitherT.fromOptionF(readRepo.getById(productId, "en"), ProductNotFound(productId)) // Fetch product
-      _ <- EitherT.cond[Future](product.hash == form.hash, product.hash, InvalidHash) // Check hash
-      dto <- EitherT(form.validate(readRepo, miscRepository)) // Validate form
-      _ <- EitherT.rightT[Future, DomainError](writeRepository.updateProduct(product, dto)) // Update product
-    } yield ()).value
+  def updateProduct(productId: Long, form: EditProductForm): EitherT[IO, DomainError, Unit] = {
+    for {
+      product <- EitherT.fromOptionF(doobieRepo.getById(productId, "en"), ProductNotFound(productId)) // Fetch product
+      _ <- EitherT.cond[IO](product.hash == form.hash, product.hash, InvalidHash) // Check hash
+      dto <- form.validate(doobieRepo, miscRepository) // Validate form
+      _ <- EitherT.right[DomainError](writeRepository.updateProduct(product, dto)) // Update product
+    } yield ()
   }
 
-  def cloneProduct(productId: Long): ServiceResponse[Product] = {
+  def cloneProduct(productId: Long): EitherT[IO, DomainError, Product] = {
     val includes = List(ProductInclusions.ATTRIBUTES, ProductInclusions.CHILDREN, ProductInclusions.RULES, ProductInclusions.ASSEMBLY_PARTS)
     val error: DomainError = GenericError
 
-    val program = for {
-      product <- EitherT.fromOptionF(readRepo.getById(productId, "en", includes), error) // Fetch the product
-      dto <- EitherT.right[DomainError](prepDto(product)) // Convert to DTO
-      newProductId <- EitherT.fromOption[Future](writeRepository.createProduct(dto).toOption, error) // Create product
-      newProduct <- EitherT.fromOptionF(readRepo.getById(newProductId, "en", includes), error) // Fetch the new product
+    for {
+      product <- EitherT.fromOptionF(doobieRepo.getById(productId, "en", includes), error) // Fetch the product
+      dto <- EitherT.right[DomainError](prepCloneDto(product)) // Convert to DTO
+      newProductId <- EitherT.right[DomainError](writeRepository.createProduct(dto)) // Create product
+      newProduct <- EitherT.fromOptionF(doobieRepo.getById(newProductId, "en", includes), error) // Fetch the new product
     } yield newProduct
-
-    program.value
   }
 
-  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse[Unit] = {
+  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse2[Unit] = {
     val error: DomainError = InvalidAttributes
-    val pairsWithAttribute: EitherT[Future, DomainError, List[(AttributeIdValuePair, Attribute)]] = attributeIdValuePairs.traverse { pair =>
-      for {
-        attr <- EitherT.fromOptionF(readRepo.getAttribute(pair.id, "en"), error)
-      } yield (pair, attr)
-    }
+    val pairsWithAttribute: EitherT[IO, DomainError, List[(AttributeIdValuePair, Attribute)]] =
+      attributeIdValuePairs.traverse { pair =>
+        for {
+          attr <- EitherT.fromOptionF(doobieRepo.getAttribute(pair.id, "en"), error)
+        } yield (pair, attr)
+      }
 
-    val program: EitherT[Future, DomainError, Unit] = for {
+    for {
       tuples <- pairsWithAttribute
       _ <- EitherT.right[DomainError](tuples.traverse { tuple =>
         val (pair, attr) = tuple
@@ -61,36 +66,32 @@ final class ProductService @Inject()(readRepo: ProductRepository, writeRepositor
         insertOrReplaceProductAttribute(productId, dto)
       })
     } yield ()
-
-    program.value
   }
 
-  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO): Future[Unit] = {
+  private def insertOrReplaceProductAttribute(productId: Long, dto: ProductAttributeDTO): IO[Unit] = {
     // Check if the product already has that attribute
-    val pao: Future[Option[ProductAttribute]] = readRepo.getProductAttribute(productId, dto.attributeId, "en")
+    val pao: IO[Option[ProductAttribute]] = doobieRepo.getProductAttribute(productId, dto.attributeId, "en")
 
-    OptionT(pao).map { pa =>
-      db.withConnection(implicit conn => writeRepository.updateProductAttribute(pa.id, dto))
-      () // @todo: Fix this
-    } getOrElse {
-      // Add a new attribute
-      db.withConnection(implicit conn => writeRepository.createProductAttribute(productId, dto))
-      () // @todo: Fix this
+    pao.flatMap {
+      case Some(pa) => writeRepository.updateProductAttribute(pa.id, dto).map(_ => ())
+      case _ => writeRepository.createProductAttribute(productId, dto).map(_ => ())
     }
   }
 
-  private def prepDto(product: Product): Future[ProductDTO] = {
+  private def prepCloneDto(product: Product): IO[ProductDTO] = {
     val newSku = s"${product.sku}_COPIE_${Random.alphanumeric.take(5).mkString("")}"
     val dto = product.toDto.copy(sku = newSku)
-    val translationsF = readRepo.getTranslations(product.descriptionId)
-    val storePricesF = readRepo.getProductStorePrices(product.id)
+    val tIO = doobieRepo.getTranslations(product.descriptionId)
+    val spIO = doobieRepo.getProductStorePrices(product.id)
 
-    for {
-      translations <- translationsF
-      storePrices <- storePricesF
-    } yield dto.copy(
-      translations = translations.map(_.toDto),
-      storePrices = storePrices.map(_.toDto)
-    )
+    // Fetch translations and store prices in parallel
+    val dtoIO: IO[ProductDTO] = (tIO, spIO).parMapN { (translations, storePrices) =>
+      dto.copy(
+        translations = translations.map(_.toDto),
+        storePrices = storePrices.map(_.toDto)
+      )
+    }
+
+    dtoIO
   }
 }

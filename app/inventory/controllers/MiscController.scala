@@ -1,10 +1,8 @@
 package inventory.controllers
 
 import javax.inject.Inject
-
 import infra.actions.ApiAction
 import inventory.repositories.MiscRepository
-import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc.{AbstractController, ControllerComponents}
 import scala.concurrent.ExecutionContext
@@ -14,16 +12,12 @@ class MiscController @Inject()(
                                 cc: ControllerComponents,
                                 miscRepository: MiscRepository
                               )(implicit ec: ExecutionContext) extends AbstractController(cc) {
-  private val logger = Logger("application")
 
   def getExtrusions = apiAction.async {
-    miscRepository.getExtrusions.map { extrusions =>
-      Ok(Json.toJson(extrusions))
-    } recover {
-      case t: Throwable =>
-        logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    miscRepository
+      .getExtrusions
+      .map(extrusions => Ok(Json.toJson(extrusions)))
+      .unsafeToFuture
   }
 }
 

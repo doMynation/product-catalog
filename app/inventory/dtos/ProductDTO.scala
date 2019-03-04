@@ -32,7 +32,7 @@ case class ProductDTO(
                        sku: String,
                        categoryId: Long,
                        departmentId: Option[Long] = None,
-                       translations: Seq[TranslationDTO] = Seq(),
+                       translations: Seq[TranslationDTO] = List(),
                        price: Double = 0,
                        costPrice: Double = 0,
                        tags: Seq[String] = List(),

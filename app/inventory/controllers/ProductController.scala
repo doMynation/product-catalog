@@ -1,12 +1,14 @@
 package inventory.controllers
 
+import cats.data.OptionT
+import cats.effect.IO
 import javax.inject._
-
 import inventory.entities.AttributeValue
-import inventory.repositories.ProductRepository
+import inventory.repositories.{ProductReadRepository, ProductRepository}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
+
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.Logger
 import cats.implicits._
@@ -17,46 +19,38 @@ class ProductController @Inject()(
                                    apiAction: ApiAction,
                                    cc: ControllerComponents,
                                    productRepo: ProductRepository,
+                                   doobieRepo: ProductReadRepository,
                                  )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   private val logger = Logger("application")
 
   def getAttributes(lang: Option[String]) = apiAction.async {
     val chosenLang = lang.getOrElse("en")
-
-    for {
-      attrs <- productRepo.getAttributes(chosenLang)
-      attrsWithValues <- attrs.toList.traverse { attribute =>
+    val program = for {
+      attrs <- doobieRepo.getAttributes(chosenLang)
+      attrsWithValues <- attrs.traverse { attribute =>
         val valuesF =
-          if (attribute.inputType == "select") productRepo.getAttributeValues(attribute.id, chosenLang)
-          else Future.successful(List.empty[AttributeValue])
+          if (attribute.inputType == "select") doobieRepo.getAttributeValues(attribute.id, chosenLang)
+          else IO.pure(List.empty[AttributeValue])
 
         valuesF.map(values => attribute.copy(values = values))
       }
     } yield Ok(Json.toJson(attrsWithValues))
+
+    program.unsafeToFuture
   }
 
   def getDepartments(lang: Option[String]) = apiAction.async {
-    val chosenLang = lang.getOrElse("en")
-
-    productRepo.getProductDepartments(chosenLang).map { departments =>
-      Ok(Json.toJson(departments))
-    } recover {
-      case t: Throwable =>
-        logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    doobieRepo
+      .getProductDepartments(lang.getOrElse("en"))
+      .map(depts => Ok(Json.toJson(depts)))
+      .unsafeToFuture
   }
 
   def getCategories(lang: Option[String]) = apiAction.async {
-    val chosenLang = lang.getOrElse("en")
-
-    productRepo.getProductCategories(chosenLang).map { categories =>
-      Ok(Json.toJson(categories))
-    } recover {
-      case t: Throwable =>
-        logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    doobieRepo
+      .getProductCategories(lang.getOrElse("en"))
+      .map(categories => Ok(Json.toJson(categories)))
+      .unsafeToFuture
   }
 
   def getMultiple(idsString: String, lang: Option[String], include: Option[String]) = apiAction.async {
@@ -64,13 +58,14 @@ class ProductController @Inject()(
     val includeSeq = include.fold(Seq[String]())(_.split(","))
     val chosenLang = lang.getOrElse("en")
 
-    if (ids.length > 100) {
-      Future.successful(BadRequest("Maximum of 100 products at once"))
-    } else {
-      val products = ids.traverse(productRepo.getById(_, chosenLang, includeSeq))
+    val program: OptionT[IO, Result] = for {
+      _ <- OptionT.fromOption[IO](if (ids.length <= 100) Some(ids) else None)
+      products <- OptionT.liftF(ids.traverse(doobieRepo.getById(_, chosenLang, includeSeq)))
+    } yield Ok(Json.toJson(products.flatten))
 
-      products.map(products => Ok(Json.toJson(products.flatten)))
-    }
+    program
+      .getOrElse(BadRequest("Maximum of 100 products at once"))
+      .unsafeToFuture
   }
 
   def get(id: Long, lang: Option[String], include: Option[String]) = apiAction.async {

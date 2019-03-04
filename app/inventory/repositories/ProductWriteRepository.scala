@@ -4,59 +4,31 @@ import java.sql.Connection
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import cats.implicits._
+import cats.effect.{ContextShift, IO}
+import doobie._
+import doobie.implicits._
 import javax.inject.Inject
 import inventory.dtos._
 import inventory.util.DB
 import play.api.db.Database
-import shared.Types.Product
+import shared.Types.{Product, Tx}
 import shared.dtos.TranslationDTO
 import shared.entities.Lang
-import scala.util.Try
 import utils.imports.implicits._
 
-final class ProductWriteRepository @Inject()(db: Database) {
-  def updateProduct(product: Product, dto: ProductDTO): Unit = {
-    val newHash = UUID.randomUUID().toString
-    val baseFields: Map[String, String] = Map(
-      "hash" -> newHash,
-      "sku" -> dto.sku,
-      "category_id" -> dto.categoryId.toString,
-      "department_id" -> dto.departmentId.map(_.toString).getOrElse(null),
-      "retail_price" -> dto.price.toString,
-      "cost_price" -> dto.costPrice.toString,
-      "tags" -> dto.tags.mkString(","),
-      "is_custom" -> dto.isCustom.toInt.toString,
-      "status" -> dto.isEnabled.toInt.toString,
-      "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
-      "image_url" -> dto.metadata.getOrElse("imageUrl", ""),
-      "mpn" -> dto.metadata.getOrElse("mpn", ""),
-      "extrusion_template_id" -> dto.metadata.get("extrusionId").filterNot(_.isEmpty).getOrElse(null),
-      "sticker_template_id" -> dto.metadata.get("stickerId").filterNot(_.isEmpty).getOrElse(null)
-    ) ++ dto.updatedAt.map(v => Map("modification_date" -> v.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).getOrElse(Map())
+final class ProductWriteRepository @Inject()(db2: Tx, db: Database)(implicit cs: ContextShift[IO]) {
 
-    db.withTransaction { implicit conn =>
-      // Update product
-      updateProductFields(product.id, baseFields)
+  def updateProduct(product: Product, dto: ProductDTO): IO[Unit] =
+    db2.use(Queries.updateProduct(product, dto).transact(_))
 
-      // Handle translations
-      deleteTranslations(product.descriptionId)
-      dto.translations.foreach(createTranslation(product.descriptionId, _))
-
-      // Handle attributes
-      deleteProductAttributes(product.id)
-      dto.attributes.foreach(createProductAttribute(product.id, _))
-
-      // Handle children
-      deleteProductChildren(product.id)
-      dto.children.foreach(createProductChild(product.id, _))
-
-      // Handle rules
-      deleteProductRules(product.id)
-      dto.rules.foreach(createProductRule(product.id, _))
-    }
-  }
-
-  def updateProductFields(productId: Long, fields: Map[String, String])(implicit connection: Connection = null): Boolean = {
+  /**
+    * @todo: Refactoring this using Doobie
+    * @param productId
+    * @param fields
+    * @return
+    */
+  def updateProductFields(productId: Long, fields: Map[String, String]): IO[Boolean] = {
     val task = (connection: Connection) => {
       val affected = DB.update("inv_products",
         List("id = @productId"),
@@ -69,11 +41,18 @@ final class ProductWriteRepository @Inject()(db: Database) {
       affected > 0
     }
 
-    if (connection == null) db.withConnection(task)
-    else task(connection)
+    IO {
+      db.withConnection(task)
+    }
   }
 
-  def bulkUpdateProduct(productIds: Seq[Long], fields: Map[String, String]): Boolean = {
+  /**
+    * @todo: Refactor this using Doobie via Update[Type](sql).updateMany(values)
+    * @param productIds
+    * @param fields
+    * @return
+    */
+  def bulkUpdateProduct(productIds: Seq[Long], fields: Map[String, String]): IO[Int] = {
     val now = LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
     val setClause = fields.keys.map(column => s"$column=@$column").mkString(", ")
     val inClause = productIds.map(id => s"@p_$id").mkString(",")
@@ -83,219 +62,189 @@ final class ProductWriteRepository @Inject()(db: Database) {
       ("modification_date" -> now)
 
     val query = DB.executeUpdate(sql, params) _
-    val affected = db.withConnection(query)
 
-    affected > 0
-  }
-
-  def deleteProduct(productId: Long): Boolean = db.withConnection { conn =>
-    val affectedRows = DB.executeUpdate("DELETE FROM inv_products WHERE id = @productId", Map("productId" -> productId.toString))(conn)
-
-    affectedRows > 0
-  }
-
-  def deleteTranslations(descriptionId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DB.executeUpdate(
-      "DELETE FROM translations WHERE description_id = @descriptionId",
-      Map("descriptionId" -> descriptionId.toString)
-    )(connection)
-
-    affectedRows > 0
-  }
-
-  def deleteProductAttributes(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DB.executeUpdate(
-      "DELETE FROM inv_product_attributes WHERE product_id = @productId",
-      Map("productId" -> productId.toString)
-    )(connection)
-
-    affectedRows > 0
-  }
-
-  def deleteProductChildren(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DB.executeUpdate(
-      "DELETE FROM inv_product_compositions WHERE product_id = @productId",
-      Map("productId" -> productId.toString)
-    )(connection)
-
-    affectedRows > 0
-  }
-
-  def deleteProductRules(productId: Long)(implicit connection: Connection): Boolean = {
-    val affectedRows = DB.executeUpdate(
-      "DELETE FROM inv_product_relations WHERE product_id = @productId",
-      Map("productId" -> productId.toString)
-    )(connection)
-
-    affectedRows > 0
-  }
-
-  def createProduct(dto: ProductDTO): Try[Long] = db.withTransaction { implicit conn =>
-    // Create a description
-    val descriptionIdTry = createDescription(dto.translations)
-
-    descriptionIdTry.map { descriptionId =>
-      val productData = Map(
-        "hash" -> UUID.randomUUID().toString,
-        "category_id" -> dto.categoryId.toString,
-        "description_id" -> descriptionId.toString,
-        "sku" -> dto.sku,
-        "retail_price" -> dto.price.toString,
-        "cost_price" -> dto.costPrice.toString,
-        "tags" -> dto.tags.mkString(","),
-        "is_kit" -> dto.metadata.getOrElse("isKit", "0"),
-        "is_custom" -> dto.isCustom.toInt.toString,
-        "status" -> dto.isEnabled.toInt.toString,
-        "creation_date" -> dto.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-      ) ++
-        dto.departmentId.map(v => Map("department_id" -> v.toString)).getOrElse(Map()) ++
-        dto.metadata.get("mpn").map(v => Map("mpn" -> v)).getOrElse(Map()) ++
-        dto.metadata.get("imageUrl").map(v => Map("image_url" -> v)).getOrElse(Map()) ++
-        dto.metadata.get("stickerId").filterNot(v => v == null || v == "0").map(v => Map("sticker_template_id" -> v)).getOrElse(Map()) ++
-        dto.metadata.get("extrusionId").filterNot(v => v == null || v == "0").map(v => Map("extrusion_template_id" -> v)).getOrElse(Map())
-
-      // Insert product
-      val productId = DB.insert("inv_products", productData)(conn)
-
-      // @todo: DB Batch inserts
-      // Persist stores
-      dto.storePrices.foreach(createProductStorePrice(productId, _))
-
-      // Persist attributes
-      dto.attributes.foreach(createProductAttribute(productId, _))
-
-      // Persist children
-      dto.children.foreach(createProductChild(productId, _))
-
-      // Persist rules
-      dto.rules.foreach(createProductRule(productId, _))
-
-      // Persist assembly
-      dto.assemblyParts.foreach(createProductAssemblyPart(productId, _))
-
-      productId
+    IO {
+      db.withConnection(query)
     }
   }
 
-  def createTranslation(descriptionId: Long, translation: TranslationDTO)(implicit conn: Connection): Try[Long] = {
-    Try {
-      DB.insert("translations", Map(
-        "description_id" -> descriptionId.toString,
-        "lang_id" -> Lang.fromString(translation.lang, 1).toString,
-        "label" -> translation.name,
-        "short_description" -> translation.shortDescription,
-        "long_description" -> translation.longDescription,
-        "is_default" -> translation.isDefault.toInt.toString
-      ))(conn)
-    }
-  }
+  def deleteProduct(productId: Long): IO[Boolean] =
+    db2.use(Queries.deleteProduct(productId).transact(_))
 
-  def createDescription(translations: Seq[TranslationDTO])(implicit conn: Connection): Try[Long] = {
-    // Create the description entry
-    val descriptionIdTry = Try {
-      DB.insert("descriptions", Map(
-        "creation_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
-        "modification_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-      ))(conn)
-    }
+  def deleteTranslations(descriptionId: Long)(implicit connection: Connection): IO[Int] =
+    db2.use(Queries.deleteTranslations(descriptionId).transact(_))
 
-    descriptionIdTry.map { descriptionId =>
-      // Create each translations
-      translations.foreach(dto => createTranslation(descriptionId, dto))
+  def createProduct(dto: ProductDTO): IO[Long] =
+    db2.use(Queries.createProduct(dto).transact(_))
 
-      descriptionId
-    }
-  }
+  def createDescription(translations: List[TranslationDTO])(implicit conn: Connection): IO[Long] =
+    db2.use(Queries.createDescription(translations).transact(_))
 
-  def createProductRule(productId: Long, rule: ProductRuleDTO)(implicit conn: Connection): Try[Long] = {
-    val isOriginalPrice = rule.newPrice == 0.00
+  def createProductAttribute(productId: Long, dto: ProductAttributeDTO): IO[Long] =
+    db2.use(Queries.createProductAttribute(productId, dto).transact(_))
 
-    Try {
-      DB.insert("inv_product_relations", Map(
-        "product_id" -> productId.toString,
-        "related_product_id" -> rule.productId.toString,
-        "price" -> rule.newPrice.toString,
-        "is_original_price" -> isOriginalPrice.toInt.toString,
-        "type" -> rule.ruleType,
-        "quantity" -> rule.quantity.toString,
-        "max_quantity" -> rule.maxAllowedQuantity.toString,
-      ))(conn)
-    }
-  }
+  def updateProductAttribute(recordId: Long, dto: ProductAttributeDTO): IO[Boolean] =
+    db2.use(Queries.updateProductAttribute(recordId, dto).transact(_))
 
-  def createProductChild(productId: Long, child: ProductChildDTO)(implicit conn: Connection): Try[Long] = {
-    Try {
-      DB.insert("inv_product_compositions", Map(
-        "product_id" -> productId.toString,
-        "sub_product_id" -> child.productId.toString,
-        "type" -> child.childType,
-        "quantity" -> child.quantity.toString,
-        "is_compiled" -> child.isCompiled.toInt.toString,
-        "is_visible" -> child.isVisible.toInt.toString,
-      ))(conn)
-    }
-  }
+  def createProductStorePrice(productId: Long, storePrice: ProductStorePriceDTO)(implicit conn: Connection): IO[Long] =
+    db2.use(Queries.createProductStorePrice(productId, storePrice).transact(_))
 
-  def createProductAttribute(productId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Try[Long] = {
-    Try {
-      DB.insert("inv_product_attributes", Map(
-        "product_id" -> productId.toString,
-        "attribute_id" -> dto.attributeId.toString,
-        "attribute_value" -> dto.valueId.getOrElse(dto.value).toString,
-        "is_reference" -> dto.isReference.toInt.toString,
-        "is_editable" -> dto.isEditable.toInt.toString,
-      ))(conn)
-    }
-  }
+  def createDepartment(dto: ProductDepartmentDTO): IO[Long] =
+    db2.use(Queries.createDepartment(dto).transact(_))
 
-  def updateProductAttribute(recordId: Long, dto: ProductAttributeDTO)(implicit conn: Connection): Boolean = {
-    val affected = DB.update(
-      "inv_product_attributes",
-      List("id = @id"),
-      Map("id" -> recordId.toString),
-      Map(
-        "attribute_value" -> dto.valueId.getOrElse(dto.value).toString,
-        "is_reference" -> dto.isReference.toInt.toString,
-        "is_editable" -> dto.isEditable.toInt.toString,
-      ))(conn)
+  /**
+    * Defines the queries without executing them. Useful for composition and sequencing database operations
+    * using a single database connection.
+    */
+  private object Queries {
+    def createDepartment(dto: ProductDepartmentDTO): ConnectionIO[Long] = {
+      val insertDepartment = (descriptionId: Long, displayOrder: Int) =>
+        sql"""INSERT INTO inv_departments
+             |(description_id, code, display_order, creation_date) VALUES
+             |(${descriptionId}, ${dto.code}, $displayOrder, ${LocalDateTime.now})
+             |""".stripMargin.update.withUniqueGeneratedKeys[Long]("id")
 
-    affected > 0
-  }
-
-  def createProductAssemblyPart(productId: Long, part: ProductAssemblyPartDTO)(implicit conn: Connection): Try[Long] = {
-    Try {
-      DB.insert("inv_product_assemblies", Map(
-        "product_id" -> productId.toString,
-        "assembly_product_id" -> part.productId.toString,
-        "tag" -> part.partType,
-        "is_default" -> part.isDefault.toInt.toString,
-      ))(conn)
-    }
-  }
-
-  def createProductStorePrice(productId: Long, storePrice: ProductStorePriceDTO)(implicit conn: Connection): Try[Long] = {
-    Try {
-      DB.insert("inv_product_stores", Map(
-        "product_id" -> productId.toString,
-        "store_id" -> storePrice.storeId.toString,
-      ) ++ storePrice.price.map(s => Map("price" -> s.toString)).getOrElse(Map())
-      )(conn)
-    }
-  }
-
-  def createDepartment(dto: ProductDepartmentDTO): Long = {
-    val task = (conn: Connection) => {
-      val dit = createDescription(dto.translations)(conn)
-      val nextDisplayOrder = DB.fetchColumn[Int]("SELECT MAX(display_order) FROM inv_departments")(conn)
-
-      DB.insert("inv_departments", Map(
-        "description_id" -> dit.get.toString, // @todo unsafe, fix this
-        "code" -> dto.code,
-        "display_order" -> nextDisplayOrder.get.toString, // @todo unsafe, fix this
-        "creation_date" -> LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss"))
-      ))(conn)
+      for {
+        displayOrder <- sql"SELECT MAX(display_order) FROM inv_departments".query[Int].unique
+        descriptionId <- createDescription(dto.translations)
+        deptId <- insertDepartment(descriptionId, displayOrder)
+      } yield deptId
     }
 
-    db.withConnection(task)
+    def createProduct(dto: ProductDTO): ConnectionIO[Long] = {
+      val insertProduct: Long => ConnectionIO[Long] = (descriptionId: Long) =>
+        sql"""INSERT INTO inv_products
+             |(sku, hash, description_id, category_id, department_id, mpn, retail_price, cost_price,
+             |image_url, extrusion_template_id, sticker_template_id, tags,
+             |is_kit, is_custom, status,
+             |creation_date, modification_date) VALUES
+             |(${dto.sku}, ${UUID.randomUUID.toString}, $descriptionId, ${dto.categoryId}, ${dto.departmentId}, ${dto.metadata.get("mpn")}, ${dto.price}, ${dto.costPrice},
+             |${dto.metadata.get("imageUrl")}, ${dto.metadata.get("extrusionId").filterNot(_.isEmpty)}, ${dto.metadata.get("stickerId").filterNot(_.isEmpty)}, ${dto.tags.mkString(",")},
+             |${dto.metadata.get("isKit").getOrElse("0")}, ${dto.isCustom.toInt}, ${dto.isEnabled.toInt},
+             |${dto.createdAt}, ${dto.updatedAt})
+             |""".stripMargin.update.withUniqueGeneratedKeys[Long]("id")
+
+      for {
+        descriptionId <- createDescription(dto.translations.toList) // Create description record
+        productId <- insertProduct(descriptionId) // Persist product
+        _ <- dto.storePrices.toList.traverse(createProductStorePrice(productId, _)) // Persist stores (@todo: Batch insert)
+        _ <- dto.attributes.toList.traverse(createProductAttribute(productId, _)) // Persist attributes (@todo: Batch insert)
+        _ <- dto.children.toList.traverse(createProductChild(productId, _)) // Persist children (@todo: Batch insert)
+        _ <- dto.rules.toList.traverse(createProductRule(productId, _)) // Persist rules (@todo: Batch insert)
+        _ <- dto.assemblyParts.toList.traverse(createProductAssemblyPart(productId, _)) // Persist assembly parts (@todo: Batch insert)
+      } yield productId
+    }
+
+    def updateProduct(product: Product, dto: ProductDTO): ConnectionIO[Unit] = {
+      val newHash = UUID.randomUUID().toString
+      val updateProduct: Long => ConnectionIO[Unit] = (descriptionId: Long) =>
+        sql"""UPDATE inv_products SET
+             |sku = ${dto.sku}, hash = ${newHash}, description_id = $descriptionId, category_id = ${dto.categoryId}, department_id = ${dto.departmentId}, mpn = ${dto.metadata.get("mpn")}, retail_price = ${dto.price}, cost_price = ${dto.costPrice},
+             |image_url = ${dto.metadata.get("imageUrl")}, extrusion_template_id = ${dto.metadata.get("extrusionId").filterNot(_.isEmpty)}, sticker_template_id = ${dto.metadata.get("stickerId").filterNot(_.isEmpty)}, tags = ${dto.tags.mkString(",")},
+             |is_kit = ${dto.metadata.get("isKit").getOrElse("0")}, is_custom = ${dto.isCustom.toInt}, status = ${dto.isEnabled.toInt}, modification_date = ${dto.updatedAt})
+             |""".stripMargin.update.run.map(_ => ())
+
+      for {
+        _ <- updateProduct(product.descriptionId) // Update product
+        _ <- deleteTranslations(product.descriptionId) // Delete current translations
+        _ <- deleteProductAttributes(product.id) // Delete current attributes
+        _ <- deleteProductChildren(product.id) // Delete current children
+        _ <- deleteProductRules(product.id) // Delete current rules
+
+        _ <- dto.translations.toList.traverse(createTranslation(product.descriptionId, _)) // Persist translations (@todo: Batch insert)
+        _ <- dto.attributes.toList.traverse(createProductAttribute(product.id, _)) // Persist attributes (@todo: Batch insert)
+        _ <- dto.children.toList.traverse(createProductChild(product.id, _)) // Persist children (@todo: Batch insert)
+        _ <- dto.rules.toList.traverse(createProductRule(product.id, _)) // Persist rules (@todo: Batch insert)
+
+        // @todo: Handle product stores
+        //        _ <- dto.assemblyParts.toList.traverse(createProductStorePrice(productId, _)) // Persist stores (@todo: Batch insert)
+        //        _ <- deleteProductAssemblyParts(product.id) // Delete current children
+      } yield ()
+    }
+
+    def createProductStorePrice(productId: Long, storePrice: ProductStorePriceDTO): ConnectionIO[Long] = {
+      val sql = sql"INSERT INTO inv_product_stores (product_id, store_id, price) VALUES ($productId, ${storePrice.storeId}, ${storePrice.price})"
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def createProductAttribute(productId: Long, dto: ProductAttributeDTO): ConnectionIO[Long] = {
+      val sql =
+        sql"""INSERT INTO inv_product_attributes (product_id, attribute_id, attribute_value, is_reference, is_editable) VALUES
+             |($productId, ${dto.attributeId}, ${dto.valueId.getOrElse(dto.value).toString}, ${dto.isReference}, ${dto.isEditable})""".stripMargin
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def updateProductAttribute(productId: Long, dto: ProductAttributeDTO): ConnectionIO[Boolean] = {
+      val sql =
+        sql"""UPDATE inv_product_attributes SET
+             |attribute_value = ${dto.valueId.getOrElse(dto.value).toString}, is_reference = ${dto.isReference}, is_editable = ${dto.isEditable})
+             |WHERE id = ${productId} AND attribute_id = ${dto.attributeId}""".stripMargin
+
+      sql.update.run.map(_ > 0)
+    }
+
+    def createProductChild(productId: Long, dto: ProductChildDTO): ConnectionIO[Long] = {
+      val sql =
+        sql"""INSERT INTO inv_product_compositions (product_id, sub_product_id, type, quantity, is_compiled, is_visible) VALUES
+             |($productId, ${dto.productId}, ${dto.childType}, ${dto.quantity}, ${dto.isCompiled}, ${dto.isVisible})""".stripMargin
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def createProductRule(productId: Long, dto: ProductRuleDTO): ConnectionIO[Long] = {
+      val isOriginalPrice = dto.newPrice == 0.00
+      val sql =
+        sql"""INSERT INTO inv_product_relations (product_id, related_product_id, price, is_original_price, type, quantity, max_quantity) VALUES
+             |($productId, ${dto.productId}, ${dto.newPrice}, ${isOriginalPrice}, ${dto.ruleType}, ${dto.quantity}, ${dto.maxAllowedQuantity})""".stripMargin
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def createProductAssemblyPart(productId: Long, dto: ProductAssemblyPartDTO): ConnectionIO[Long] = {
+      val sql =
+        sql"""INSERT INTO inv_product_assemblies (product_id, assembly_product_id, tag, is_default) VALUES
+             |($productId, ${dto.productId}, ${dto.partType}, ${dto.isDefault})""".stripMargin
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def createDescription(translations: List[TranslationDTO]): ConnectionIO[Long] = {
+      for {
+        descriptionId <- sql"INSERT INTO descriptions (creation_date, modification_date) VALUES (NOW(), NOW())".update.withUniqueGeneratedKeys[Long]("id")
+        _ <- translations.traverse(createTranslation(descriptionId, _))
+      } yield descriptionId
+    }
+
+    def createTranslation(descriptionId: Long, dto: TranslationDTO): ConnectionIO[Long] = {
+      val langId = Lang.fromString(dto.lang, 1)
+      val sql =
+        sql"""INSERT INTO translations
+             |(description_id, lang_id, label, short_description, long_description, is_default) VALUES
+             |($descriptionId, $langId, ${dto.name}, ${dto.shortDescription}, ${dto.longDescription}, ${dto.isDefault})""".stripMargin
+
+      sql.update.withUniqueGeneratedKeys[Long]("id")
+    }
+
+    def deleteProduct(productId: Long): ConnectionIO[Boolean] =
+      sql"DELETE FROM inv_products WHERE id = $productId".update.run.map(_ > 0)
+
+    def deleteTranslations(descriptionId: Long): ConnectionIO[Int] =
+      sql"DELETE FROM translations WHERE description_id = $descriptionId".update.run
+
+    def deleteProductAttributes(productId: Long): ConnectionIO[Int] =
+      sql"DELETE FROM inv_product_attributes WHERE product_id = $productId".update.run
+
+    def deleteProductRules(productId: Long): ConnectionIO[Int] =
+      sql"DELETE FROM inv_product_relations WHERE product_id = $productId".update.run
+
+    def deleteProductChildren(productId: Long): ConnectionIO[Int] =
+      sql"DELETE FROM inv_product_compositions WHERE product_id = $productId".update.run
+
+    def deleteProductAssemblyParts(productId: Long): ConnectionIO[Int] =
+      sql"DELETE FROM inv_product_assemblies WHERE product_id = $productId".update.run
+
   }
+
 }

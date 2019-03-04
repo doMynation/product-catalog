@@ -1,59 +1,46 @@
 package inventory.repositories
 
-import java.sql.ResultSet
+import cats.effect.{ContextShift, IO}
 import javax.inject.Inject
-import infra.DatabaseExecutionContext
 import inventory.entities.Extrusion
-import inventory.util.DB
-import play.api.db.Database
-import scala.concurrent.Future
+import shared.Types.Tx
+import doobie._
+import doobie.implicits._
 
-final class MiscRepository @Inject()(db: Database)(implicit ec: DatabaseExecutionContext) {
+final class MiscRepository @Inject()(db: Tx)(implicit cs: ContextShift[IO]) {
 
-  def getExtrusion(id: Long): Future[Option[Extrusion]] = Future {
+  def getExtrusion(id: Long): IO[Option[Extrusion]] = {
     val sql =
-      """
+      sql"""
          SELECT
          et.id,
          e.supplier_code AS mpn,
+         e.name,
          et.name AS templateName,
-         e.name AS name,
          et.image_url AS imageUrl,
-         e.profile_image_url AS profileImageUrl,
-         e.weight
+         e.profile_image_url AS profileImageUrl
          FROM extrusion_templates et JOIN extrusions e ON e.id = et.extrusion_id
-         WHERE et.id = @extrusionId
+         WHERE et.id = $id
       """
-    val fetch = DB.fetchOne(sql, Map("extrusionId" -> id.toString))(hydrateExtrusion) _
+    val query = sql.query[Extrusion].option
 
-    db.withConnection(fetch)
+    db.use(query.transact(_))
   }
 
-  def getExtrusions: Future[Seq[Extrusion]] = Future {
+  def getExtrusions: IO[List[Extrusion]] = {
     val sql =
-      """
+      sql"""
          SELECT
          et.id,
          e.supplier_code AS mpn,
-         et.name AS templateName,
          e.name AS name,
+         et.name AS templateName,
          et.image_url AS imageUrl,
-         e.profile_image_url AS profileImageUrl,
-         e.weight
+         e.profile_image_url AS profileImageUrl
          FROM extrusion_templates et JOIN extrusions e ON e.id = et.extrusion_id
       """
-    val fetch = DB.fetchMany[Extrusion](sql, Map())(hydrateExtrusion) _
+    val query = sql.query[Extrusion].to[List]
 
-    db.withConnection(fetch)
+    db.use(query.transact(_))
   }
-
-  private def hydrateExtrusion(rs: ResultSet): Extrusion =
-    Extrusion(
-      rs.getLong("id"),
-      rs.getString("mpn"),
-      rs.getString("name"),
-      rs.getString("templateName"),
-      rs.getString("imageUrl"),
-      rs.getString("profileImageUrl")
-    )
 }
