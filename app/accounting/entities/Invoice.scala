@@ -7,6 +7,41 @@ import play.api.libs.json.{Json, Writes}
 import shared.entities.TimestampEntity
 
 object Invoice {
+
+  case class InvoiceDB(
+                        id: Long,
+                        uuid: String,
+                        name: String,
+                        storeId: Long,
+                        authorId: Long,
+                        subtotal: BigDecimal,
+                        total: BigDecimal,
+                        paidAmount: BigDecimal,
+                        currencyId: Int,
+                        typeId: Int,
+                        statusId: Int,
+                        createdAt: LocalDateTime,
+                        updatedAt: Option[LocalDateTime],
+                        note: String,
+                        customerId: Long,
+                        customerName: String,
+                        orderId: Option[Long],
+                        orderName: Option[String],
+                      ) {
+    def toEntity: Invoice = {
+      val currency = if (currencyId == 1) Currency.CAD else Currency.USD
+      val invoiceType = if (typeId == 1) InvoiceType.INVOICE else InvoiceType.CONTRACT
+      val invoiceStatus = InvoiceStatus.fromId(statusId).getOrElse(InvoiceStatus.NORMAL)
+      val metadata = Map(
+        "note" -> note,
+        "customerName" -> customerName,
+        "orderName" -> orderName.getOrElse("")
+      )
+
+      Invoice(id, UUID.fromString(uuid), name, orderId, customerId, authorId, storeId, subtotal, total, paidAmount, currency, createdAt, updatedAt, invoiceType, invoiceStatus, metadata)
+    }
+  }
+
   implicit val invoiceWrites: Writes[Invoice] = Json.writes[Invoice]
 }
 

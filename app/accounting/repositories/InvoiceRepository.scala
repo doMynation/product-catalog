@@ -3,38 +3,33 @@ package accounting.repositories
 import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
+import accounting.entities.Invoice.InvoiceDB
 import javax.inject.Inject
-
 import accounting.entities._
+import cats.implicits._
+import cats.effect.IO
 import infra.DatabaseExecutionContext
 import inventory.util.{DB, SearchRequest, SearchResult}
 import play.api.db.{Database, NamedDatabase}
 import shared._
 import shared.entities.{ApplicableTaxes, LineItem, LineItemType, TaxComponent}
-import utils.InvoiceId
-
+import utils.{InvoiceId, SolariusDB}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
+import doobie._
+import doobie.implicits._
+import utils.imports.implicits._
 
-final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)(implicit ec: DatabaseExecutionContext) {
+final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database, solarius: SolariusDB)(implicit ec: DatabaseExecutionContext) {
 
-  def get(id: InvoiceId): Future[Option[Invoice]] = Future {
-    db.withConnection { conn =>
-      val sql =
-        """
-         SELECT i.*, c.*, o.sale_id AS orderName
-         FROM s_invoices i
-         JOIN customers c ON c.id = i.customer_id
-         LEFT JOIN s_orders o ON o.id = i.order_id
-         WHERE i.id = @invoiceId
-      """
-      val params = Map(
-        "invoiceId" -> id.toString
-      )
+  def getById(invoiceId: Long): IO[Option[Invoice]] =
+    solarius.run(Queries.getInvoice("id", invoiceId.toString))
 
-      DB.fetchOne[Invoice](sql, params)(hydrateInvoice)(conn)
-    }
-  }
+  def getById(invoiceId: UUID): IO[Option[Invoice]] =
+    solarius.run(Queries.getInvoice("uuid", invoiceId.toString))
+
+  def getInvoiceLineItems(invoiceId: Long): IO[List[LineItem]] =
+    solarius.run(Queries.getInvoiceLineItems(invoiceId))
 
   def get(invoiceId: InvoiceId, storeId: Long): Future[Option[Invoice]] = Future {
     db.withConnection { conn =>
@@ -74,17 +69,11 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
     }
   }
 
-  def getStoreBalance(storeId: Long): Future[Option[BigDecimal]] = Future {
-    db.withConnection { conn =>
-      val unpaidStatusId = InvoiceStatus.fromString(InvoiceStatus.NORMAL).get
-      val sql = "SELECT SUM(balance) AS totalBalance FROM s_invoices WHERE branch_id = @storeId AND status = @invoiceStatus"
-      val params = Map("storeId" -> storeId.toString, "invoiceStatus" -> unpaidStatusId.toString)
+  def getStoreBalance(storeId: Long): IO[BigDecimal] =
+    solarius.run(Queries.getStoreBalance(storeId))
 
-      DB.fetchOne[Option[BigDecimal]](sql, params) { rs =>
-        DB.getNullable[BigDecimal]("totalBalance", rs)
-      }(conn).flatten
-    }
-  }
+  def getInvoiceTaxes(invoiceId: Long): IO[ApplicableTaxes] =
+    solarius.run(Queries.getInvoiceTaxes(invoiceId))
 
   def getTaxes(invoiceId: InvoiceId): Future[ApplicableTaxes] = Future {
     db.withConnection { conn =>
@@ -282,4 +271,93 @@ final class InvoiceRepository @Inject()(@NamedDatabase("solarius") db: Database)
       )
     )
   }
+
+  private object Queries {
+    def getInvoice(field: String, invoiceId: String): ConnectionIO[Option[Invoice]] = {
+      val whereClause: Fragment = field match {
+        case "uuid" => fr"i.url_id = $invoiceId"
+        case _ => fr"i.id = $invoiceId"
+      }
+
+      val sql =
+        sql"""
+         SELECT
+           i.id, i.url_id, i.sale_id, i.branch_id, i.user_id, sub_total, total, deposit, currency_id,
+           i.type_id, i.status, i.creation_date, i.modification_date, i.note, i.customer_id, c.full_name, i.order_id, o.sale_id
+         FROM s_invoices i
+         JOIN customers c ON c.id = i.customer_id
+         LEFT JOIN s_orders o ON o.id = i.order_id
+         WHERE """ ++ whereClause
+
+      sql
+        .query[InvoiceDB]
+        .map(_.toEntity)
+        .option
+    }
+
+    def getStoreBalance(storeId: Long): ConnectionIO[BigDecimal] = {
+      val unpaidStatusId = InvoiceStatus.fromString(InvoiceStatus.NORMAL).get
+      val sql = sql"SELECT IFNULL(SUM(balance), 0.00) AS totalBalance FROM s_invoices WHERE branch_id = $storeId AND status = $unpaidStatusId"
+
+      sql.query[BigDecimal].unique
+    }
+
+    def getInvoiceTaxes(invoiceId: Long): ConnectionIO[ApplicableTaxes] = {
+      val sql =
+        sql"""
+          SELECT
+            c.id AS componentId,
+            c.label AS componentName,
+            c.value AS componentRate,
+            it.total AS componentAmount
+          FROM s_invoice_taxes AS it
+          JOIN tax_components AS c ON c.id = it.tax_component_id
+          WHERE it.invoice_id = $invoiceId;
+        """
+
+      sql
+        .query[(TaxComponent, BigDecimal)]
+        .to[List]
+        .map(ApplicableTaxes(_))
+    }
+
+    def getInvoiceLineItems(invoiceId: Long): ConnectionIO[List[LineItem]] = {
+      val sql = sql"SELECT id, quantity, retail_price, sale_price, status, product_id, product_label FROM s_invoice_products WHERE invoice_id = $invoiceId"
+
+      val getItems: ConnectionIO[List[LineItem]] = sql
+        .query[LineItem.LineItemDB]
+        .map(_.toEntity)
+        .to[List]
+
+      for {
+        items <- getItems // Get the line items
+        attributeOverrides <- getLineItemsAttributeOverrides(invoiceId) // Get all the attribute overrides
+      } yield {
+        // Merge line items with their attribute overrides
+        items.map { item =>
+          item.copy(attributeOverrides = attributeOverrides.getOrElse(item.id, List()))
+        }
+      }
+    }
+
+    private def getLineItemsAttributeOverrides(invoiceId: Long): ConnectionIO[Map[Long, Seq[(String, String)]]] = {
+      val sql =
+        sql"""
+          SELECT *
+          FROM s_invoice_product_attributes AS ipa
+          JOIN s_invoice_products ip ON ip.id = ipa.product_record_id
+          WHERE ip.invoice_id = $invoiceId
+        """
+
+      sql
+        .query[(Long, String, String)]
+        .to[List]
+        .map { ls =>
+          ls
+            .groupBy(_._1)
+            .mapValues(_.map(tuple => (tuple._2, tuple._3)))
+        }
+    }
+  }
+
 }

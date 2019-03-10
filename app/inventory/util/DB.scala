@@ -1,18 +1,9 @@
 package inventory.util
 
 import java.sql._
-
-import infra.DatabaseExecutionContext
-import play.api.db.Database
 import scala.collection.immutable.Queue
 
 object DB {
-  def fetchOne2[A](sql: String, params: Map[String, String])(implicit hydrator: ResultSet => A, conn: Connection): Option[A] = {
-    val rs = executeQuery(sql, params)(conn)
-
-    if (rs.next) Some(hydrator(rs)) else None
-  }
-
   /**
     * Fetches the first record from the result of a database query.
     *

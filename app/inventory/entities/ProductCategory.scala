@@ -10,15 +10,15 @@ import scala.collection.immutable.SortedSet
 object ProductCategory {
   implicit val categoryWrites: Writes[ProductCategory] = Json.writes[ProductCategory]
 
-  def apply2(
-              id: Long,
-              code: String,
-              description: Description,
-              createdAt: LocalDateTime = LocalDateTime.now,
-              updatedAt: Option[LocalDateTime] = None,
-            ): ProductCategory = new ProductCategory(id, code, description, createdAt, updatedAt)
+  def applyDB(
+               id: Long,
+               code: String,
+               description: Description,
+               createdAt: LocalDateTime = LocalDateTime.now,
+               updatedAt: Option[LocalDateTime] = None,
+             ): ProductCategory = new ProductCategory(id, code, description, createdAt, updatedAt)
 
-  def tupled = (ProductCategory.apply2 _).tupled
+  def tupled = (ProductCategory.applyDB _).tupled
 }
 
 case class ProductCategory(

@@ -4,7 +4,7 @@ import play.api.libs.json.{Json, Writes}
 import shared.Includable
 
 object Customer {
-  implicit val addressWrites: Writes[Customer] = Json.writes[Customer]
+  implicit val customerWrites: Writes[Customer] = Json.writes[Customer]
 }
 
 case class Customer(

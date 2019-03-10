@@ -12,7 +12,7 @@ import cats.data.{EitherT}
 import cats.effect.{ContextShift, IO}
 import cats.effect.implicits._
 import cats.implicits._
-import shared.Types.{ServiceResponse2}
+import shared.Types.{ServiceResponse}
 
 final class ProductService @Inject()(
                                       doobieRepo: ProductReadRepository,
@@ -42,7 +42,7 @@ final class ProductService @Inject()(
     } yield newProduct
   }
 
-  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse2[Unit] = {
+  def addProductAttributes(productId: Long, attributeIdValuePairs: List[AttributeIdValuePair]): ServiceResponse[Unit] = {
     val error: DomainError = InvalidAttributes
     val pairsWithAttribute: EitherT[IO, DomainError, List[(AttributeIdValuePair, Attribute)]] =
       attributeIdValuePairs.traverse { pair =>

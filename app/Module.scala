@@ -6,11 +6,11 @@ import com.google.inject.{AbstractModule, Provides}
 import doobie.util.ExecutionContexts
 import doobie.util.transactor.Transactor
 import inventory.util.FileUploader
-import play.api.db.Database
+import play.api.db.{Database, NamedDatabase}
 import play.api.libs.ws.WSClient
 import play.api.{Configuration, Environment}
-import shared.Types.Tx
-import utils.Mailgun
+import shared.Types.{Tx}
+import utils.{Mailgun, SolariusDB}
 
 import scala.concurrent.ExecutionContext
 
@@ -51,9 +51,19 @@ class Module(env: Environment, config: Configuration) extends AbstractModule {
   @Provides
   def provideTransactor(db: Database)(implicit cs: ContextShift[IO]): Tx = {
     for {
+      ce <- ExecutionContexts.fixedThreadPool[IO](32) // The EC for awaiting connections
+      te <- ExecutionContexts.cachedThreadPool[IO] // The EC for transactions
+    } yield Transactor.fromDataSource[IO](db.dataSource, ce, te) // Datasource is a hikari datasource
+  }
+
+  @Provides
+  def provideSolariusTransactor(@NamedDatabase("solarius") db: Database)(implicit cs: ContextShift[IO]): SolariusDB = {
+    val resource = for {
       ce <- ExecutionContexts.fixedThreadPool[IO](32) // our connect EC
       te <- ExecutionContexts.cachedThreadPool[IO] // our transaction EC
     } yield Transactor.fromDataSource[IO](db.dataSource, ce, te) // Datasource is a hikari datasource
+
+    new SolariusDB(resource)
   }
 
   //  @Provides
