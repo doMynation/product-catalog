@@ -14,15 +14,13 @@ import play.api.mvc._
 import sales.SalesService
 import sales.repositories.CustomerRepository
 import shared.{Includable, LineItems}
-import utils.InvoiceId
-import scala.concurrent.{ExecutionContext, Future}
 
 class StoreInvoiceController @Inject()(
                                         cc: ControllerComponents,
                                         invoiceRepo: InvoiceRepository,
                                         customerRepository: CustomerRepository,
                                         salesService: SalesService
-                                      )(implicit ec: ExecutionContext) extends AbstractController(cc) {
+                                      ) extends AbstractController(cc) {
   private val logger = Logger("application")
 
   def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
@@ -77,13 +75,10 @@ class StoreInvoiceController @Inject()(
     val queryString = req.queryString ++ Map("storeId" -> Seq(storeId.toString))
     val sr = SearchRequest.fromQueryString(queryString)
 
-    invoiceRepo.search(sr, Seq()).map { searchResult =>
-      Ok(Json.toJson(searchResult))
-    } recover {
-      case t: Throwable =>
-        logger.error(t.toString)
-        ServiceUnavailable("Unexpected error")
-    }
+    invoiceRepo
+      .search(sr)
+      .map(searchResult => Ok(Json.toJson(searchResult)))
+      .unsafeToFuture
   }
 
   private def handleIncludes(invoice: Invoice, lang: String, include: Set[String]): IO[Map[String, Includable]] = {

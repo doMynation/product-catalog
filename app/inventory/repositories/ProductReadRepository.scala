@@ -596,7 +596,7 @@ final class ProductReadRepository @Inject()(db: Tx)(implicit cs: ContextShift[IO
         "id" -> "p.id",
         "sku" -> "sku",
         "name" -> "`p.name`",
-        "price" -> "price",
+        "price" -> "retail_price",
         "shortDescription" -> "`p.short_description`",
         "longDescription" -> "`p.long_description`",
         "isCustom" -> "p.is_custom",
@@ -648,7 +648,7 @@ final class ProductReadRepository @Inject()(db: Tx)(implicit cs: ContextShift[IO
           joins.flatten.intercalate(fr" ") ++
           Fragments.whereAndOpt(wheres: _*) ++
           fr"HAVING " ++ Fragments.andOpt(havings: _*) ++
-          fr"ORDER BY $sortField $sortOrder" ++
+          Fragment.const(s"ORDER BY $sortField $sortOrder") ++
           limitClause
 
       val step1: ConnectionIO[List[Product]] = sql
