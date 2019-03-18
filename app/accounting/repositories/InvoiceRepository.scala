@@ -1,14 +1,12 @@
 package accounting.repositories
 
-import java.sql.ResultSet
-import java.time.LocalDateTime
 import java.util.UUID
 import accounting.entities.Invoice.InvoiceDB
 import javax.inject.Inject
 import accounting.entities._
 import cats.implicits._
 import cats.effect.IO
-import inventory.util.{DB, SearchRequest, SearchResult}
+import inventory.util.{SearchRequest, SearchResult}
 import shared._
 import shared.entities.{ApplicableTaxes, LineItem, TaxComponent}
 import utils.{SolariusDB}
@@ -17,6 +15,7 @@ import doobie.implicits._
 import utils.imports.implicits._
 
 final class InvoiceRepository @Inject()(solarius: SolariusDB) {
+  implicit val han = LogHandler.jdkLogHandler
 
   def getById(invoiceId: Long): IO[Option[Invoice]] =
     solarius.run(Queries.getInvoice("id", invoiceId.toString))
@@ -88,7 +87,7 @@ final class InvoiceRepository @Inject()(solarius: SolariusDB) {
           limitClause
 
       val fetchInvoices = sql
-        .queryWithLogHandler[Invoice.InvoiceDB](LogHandler.jdkLogHandler)
+        .query[Invoice.InvoiceDB]
         .map(_.toEntity)
         .to[List]
 

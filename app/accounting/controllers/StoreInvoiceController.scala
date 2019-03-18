@@ -8,7 +8,6 @@ import cats.data.OptionT
 import cats.effect.IO
 import cats.implicits._
 import inventory.util.SearchRequest
-import play.api.Logger
 import play.api.libs.json.{JsObject, Json}
 import play.api.mvc._
 import sales.SalesService
@@ -21,7 +20,6 @@ class StoreInvoiceController @Inject()(
                                         customerRepository: CustomerRepository,
                                         salesService: SalesService
                                       ) extends AbstractController(cc) {
-  private val logger = Logger("application")
 
   def get(invoiceId: Long, storeId: Long, lang: Option[String], include: Option[String]) = Action.async {
     val includeSet: Set[String] = include.fold(Seq[String]())(_.split(",")).toSet

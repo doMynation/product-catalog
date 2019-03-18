@@ -7,7 +7,7 @@ import doobie._
 import doobie.implicits._
 import javax.inject.Inject
 import infra.DatabaseExecutionContext
-import inventory.util.{DB, SearchRequest, SearchResult}
+import inventory.util.{DB}
 import play.api.db.{Database, NamedDatabase}
 import sales.entities.{Address, AddressType, Customer}
 import shared.entities.PhoneNumber
@@ -128,7 +128,7 @@ final class CustomerRepository @Inject()(@NamedDatabase("solarius") db: Database
         .query[(Int, String, String, String, String, String, String)]
         .map(rec => Address(
           AddressType.fromId(rec._1).getOrElse(AddressType.BILLING),
-          rec._2, rec._3, rec._4, "", rec._5, rec._6, rec._7
+          rec._2, rec._3, "", rec._4, rec._5, rec._6, rec._7
         ))
         .to[List]
     }

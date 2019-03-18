@@ -613,6 +613,10 @@ final class ProductReadRepository @Inject()(db: Tx)(implicit cs: ContextShift[IO
         .map(lim => fr"LIMIT ${sr.offset}, $lim")
         .getOrElse(fr"LIMIT 100")
 
+      val priceSelect =
+        if (sr.filters.contains("storeId")) "COALESCE(ps.price, p.retail_price)"
+        else "p.retail_price"
+
       val sql: Fragment =
         fr"""
               SELECT
@@ -620,8 +624,9 @@ final class ProductReadRepository @Inject()(db: Tx)(implicit cs: ContextShift[IO
                 p.id, p.sku, p.hash, p.description_id,
                 COALESCE(t.label, dt.label) AS `p.name`,
                 COALESCE(t.short_description, dt.short_description) AS `p.short_description`,
-                COALESCE(t.long_description, dt.long_description) AS `p.long_description`,
-                p.retail_price, p.cost_price, p.tags, p.is_custom, p.is_kit, p.status,
+                COALESCE(t.long_description, dt.long_description) AS `p.long_description`,""" ++
+          Fragment.const(priceSelect) ++
+          fr""", p.cost_price, p.tags, p.is_custom, p.is_kit, p.status,
                 p.mpn, p.image_url, p.sticker_template_id, p.extrusion_template_id,
                 p.creation_date, p.modification_date,
 

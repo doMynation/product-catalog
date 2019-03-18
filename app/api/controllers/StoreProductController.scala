@@ -5,16 +5,18 @@ import cats.data.OptionT
 import cats.implicits._
 import infra.actions.ApiAction
 import infra.responses.ApiResponse
-import inventory.repositories.{ProductRepository, StoreProductRepository}
+import inventory.repositories.{ProductReadRepository, ProductRepository, StoreProductRepository}
 import inventory.util.SearchRequest
 import play.api.libs.json.Json
 import play.api.mvc._
+
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreProductController @Inject()(
                                         apiAction: ApiAction,
                                         cc: ControllerComponents,
                                         productRepo: ProductRepository,
+                                        productReadRepo: ProductReadRepository,
                                         storeRepo: StoreProductRepository,
                                       )(implicit ec: ExecutionContext) extends AbstractController(cc) {
 
@@ -78,13 +80,13 @@ class StoreProductController @Inject()(
 
   def search(lang: Option[String], include: Option[String]) = apiAction.async { req =>
     // Restrict products searched by store to enabled ones only
-    val queryString = req.queryString ++ Map("IsEnabled" -> List("1"))
+    val queryString = req.queryString + ("IsEnabled" -> List("1"), "storeId" -> List(req.store.id.toString))
     val sr = SearchRequest.fromQueryString(queryString)
     val inc: Seq[String] = include.map(_.split(",").toSeq).getOrElse(Seq())
     val chosenLang = lang.getOrElse("en")
 
-    storeRepo
-      .search(sr, chosenLang, req.store.id, inc)
+    productReadRepo
+      .search(sr, chosenLang, inc)
       .map { searchResult =>
         Ok(Json.toJson(
           ApiResponse(searchResult.results, Map(
@@ -93,5 +95,6 @@ class StoreProductController @Inject()(
           ))
         ))
       }
+      .unsafeToFuture
   }
 }

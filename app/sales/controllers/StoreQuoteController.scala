@@ -2,10 +2,9 @@ package sales.controllers
 
 import java.util.UUID
 import javax.inject._
-
 import cats.data.OptionT
 import cats.implicits._
-import inventory.repositories.{ProductInclusions, ProductRepository}
+import inventory.repositories.{ProductInclusions}
 import inventory.util.SearchRequest
 import play.api.Logger
 import play.api.libs.json.{JsObject, Json}
@@ -15,14 +14,12 @@ import sales.entities.Quote
 import sales.repositories.{CustomerRepository, QuoteRepository}
 import shared._
 import utils.QuoteId
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class StoreQuoteController @Inject()(
                                       cc: ControllerComponents,
                                       quoteRepository: QuoteRepository,
                                       customerRepository: CustomerRepository,
-                                      productRepo: ProductRepository,
                                       salesService: SalesService
                                     )(implicit ec: ExecutionContext) extends AbstractController(cc) {
   private val logger = Logger("application")

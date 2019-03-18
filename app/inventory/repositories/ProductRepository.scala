@@ -2,9 +2,6 @@ package inventory.repositories
 
 import cats.data.OptionT
 import cats.implicits._
-import doobie._
-import doobie.util.fragment.Fragment
-import doobie.implicits._
 import infra.DatabaseExecutionContext
 import inventory.entities._
 import inventory.util.{DB, SearchRequest, SearchResult}
@@ -12,7 +9,6 @@ import javax.inject.Inject
 import play.api.db.Database
 import shared.Types.Product
 import shared.entities.Lang
-
 import scala.collection.immutable.{ListSet, Queue, SortedSet}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
