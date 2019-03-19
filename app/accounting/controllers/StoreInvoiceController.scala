@@ -98,7 +98,7 @@ class StoreInvoiceController @Inject()(
             for {
               m <- acc
               items <- invoiceRepo.getInvoiceLineItems(invoice.id)
-              itemsWithProduct <- items.traverse(salesService.populateLineItemIO(_, lang))
+              itemsWithProduct <- items.traverse(salesService.populateLineItem(_, lang))
             } yield m + (includeCode -> LineItems(itemsWithProduct))
           case _ => acc
         }

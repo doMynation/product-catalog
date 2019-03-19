@@ -129,11 +129,7 @@ final class InvoiceRepository @Inject()(solarius: SolariusDB) {
     def getInvoiceTaxes(invoiceId: Long): ConnectionIO[ApplicableTaxes] = {
       val sql =
         sql"""
-          SELECT
-            c.id AS componentId,
-            c.label AS componentName,
-            c.value AS componentRate,
-            it.total AS componentAmount
+          SELECT c.id, c.label, c.value, it.total
           FROM s_invoice_taxes AS it
           JOIN tax_components AS c ON c.id = it.tax_component_id
           WHERE it.invoice_id = $invoiceId;

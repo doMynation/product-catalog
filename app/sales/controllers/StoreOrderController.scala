@@ -28,7 +28,7 @@ class StoreOrderController @Inject()(
     val program: OptionT[IO, Result] = for {
       order <- OptionT(orderRepository.getById(orderId))
       if order.storeId == storeId
-      include <- OptionT.liftF(handleIncludesIO(order, chosenLang, includeSet))
+      include <- OptionT.liftF(handleIncludes(order, chosenLang, includeSet))
     } yield Ok(JsObject(Seq(
       "order" -> Json.toJson(order),
       "includes" -> Json.toJson(include)
@@ -47,7 +47,7 @@ class StoreOrderController @Inject()(
     val program: OptionT[IO, Result] = for {
       order <- OptionT(orderRepository.getById(orderUuid))
       if order.storeId == storeId
-      include <- OptionT.liftF(handleIncludesIO(order, chosenLang, includeSet))
+      include <- OptionT.liftF(handleIncludes(order, chosenLang, includeSet))
     } yield Ok(JsObject(Seq(
       "order" -> Json.toJson(order),
       "includes" -> Json.toJson(include)
@@ -81,7 +81,7 @@ class StoreOrderController @Inject()(
       .unsafeToFuture
   }
 
-  private def handleIncludesIO(order: Order, lang: String, include: Set[String]): IO[Map[String, Includable]] = {
+  private def handleIncludes(order: Order, lang: String, include: Set[String]): IO[Map[String, Includable]] = {
     include.foldLeft(IO.pure(Map.empty[String, Includable])) {
       (acc, includeCode) =>
         includeCode match {
@@ -95,7 +95,7 @@ class StoreOrderController @Inject()(
             for {
               m <- acc
               items <- orderRepository.getLineItems(order.id)
-              itemsWithProduct <- items.traverse(salesService.populateLineItemIO(_, lang))
+              itemsWithProduct <- items.traverse(salesService.populateLineItem(_, lang))
             } yield m + (includeCode -> LineItems(itemsWithProduct))
           case _ => acc
           case "expeditionDetails" =>

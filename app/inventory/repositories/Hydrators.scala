@@ -2,7 +2,6 @@ package inventory.repositories
 
 import java.sql.ResultSet
 import java.time.LocalDateTime
-
 import inventory.entities._
 import inventory.util.DB
 import shared.entities.Lang

@@ -119,7 +119,7 @@ final class OrderRepository @Inject()(solarius: SolariusDB) {
       }
       val wheres: List[Option[Fragment]] = List(
         Some(fr"1 = 1"),
-        nonEmptyFilters.get("name").map(value => fr"o.sale LIKE ${"%" + value + "%"}"),
+        nonEmptyFilters.get("name").map(value => fr"o.sale_id LIKE ${"%" + value + "%"}"),
         nonEmptyFilters.get("storeId").map(value => fr"o.branch_id = $value"),
         nonEmptyFilters.get("customerId").map(value => fr"c.id = $value"),
         nonEmptyFilters.get("customerName").map(value => fr"c.full_name LIKE ${"%" + value + "%"}"),
